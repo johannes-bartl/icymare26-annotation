@@ -208,20 +208,18 @@
       return;
     }
 
-    html += '<div class="exportmenu-head">One file per marker type</div>';
+    html += '<div class="exportmenu-head">One file per drawing mode</div>';
     for (i = 0; i < exportFiles.length; i++) {
       f = exportFiles[i];
-      if (f.name !== 'skeletons.json') total += f.count;
+      if (!f.isJSON) total += f.count;
       html += '<button class="exportrow" data-i="' + i + '">' +
-                '<span class="exportrow-dot"' +
-                  (f.color ? ' style="background:' + f.color + '"' : ' data-blank="1"') + '></span>' +
-                '<span class="exportrow-icon">' + window.svgIcon(f.shape, 14) + '</span>' +
+                '<span class="exportrow-icon">' + window.svgIcon(f.shape, 16) + '</span>' +
                 '<span class="exportrow-main">' +
                   '<span class="exportrow-name">' + esc(f.label) + '</span>' +
                   '<span class="exportrow-sub">' + f.count + ' ' +
-                    (f.name === 'skeletons.json'
-                      ? 'skeleton' + (f.count === 1 ? '' : 's')
-                      : 'marker' + (f.count === 1 ? '' : 's')) +
+                    (f.isJSON ? 'skeleton' + (f.count === 1 ? '' : 's')
+                              : 'marker' + (f.count === 1 ? '' : 's')) +
+                    (f.types && f.types.length ? ' · ' + esc(f.types.join(', ')) : '') +
                     ' · ' + esc(f.name) + '</span>' +
                 '</span>' +
                 '<span class="exportrow-dl">' + window.svgIcon('download', 15) + '</span>' +

@@ -141,16 +141,28 @@ bones stay available, because none of those shift an index.
 
 ## Export
 
-**Every marker type gets its own CSV**, named after the type and carrying only the columns
-that type's shape needs. Hover the **Export** button for a menu listing each file with its
-marker count — click one to download it on its own, or take everything at once. A single file
-downloads directly; several arrive as a ZIP. Types you never drew with are not offered.
+**Every drawing mode gets its own CSV**, carrying only the columns that mode needs:
 
-Pose types additionally contribute `skeletons.json`, so the blueprints travel with the data.
+| File | Contains |
+| --- | --- |
+| `points.csv` | every Point marker |
+| `rectangles.csv` | every Rectangle marker |
+| `ellipses.csv` | every Ellipse marker |
+| `lines.csv` | every Line marker |
+| `polygons.csv` | every Polygon marker |
+| `poses.csv` | every Pose marker |
+| `skeletons.json` | the blueprints, so they travel with the data |
+
+Several marker types sharing a mode share the file — two rectangle types, `Seal` and `Bird`,
+both land in `rectangles.csv` and are told apart by the `class_name` column.
+
+Hover the **Export** button for a menu listing each file with its marker count and which
+types are in it. Click one to download it on its own, or take everything at once: a single
+file downloads directly, several arrive as a ZIP. Modes you never drew in are not offered.
 
 All coordinates are **absolute image pixels**, origin at the top-left corner.
 
-### Point, rectangle, ellipse and line types
+### `points.csv`, `rectangles.csv`, `ellipses.csv`, `lines.csv`
 
 One row per marker.
 
@@ -167,7 +179,7 @@ For a rotated box or ellipse, `x`, `y`, `w`, `h` describe it **before** rotation
 `angle_deg` turns it about its centre — so the four numbers stay exact, and at
 `angle_deg = 0` they are simply the axis-aligned bounding box.
 
-### Polygon types
+### `polygons.csv`
 
 **One row per vertex** — a variable number of vertices does not belong in a variable number
 of columns, and this shape pivots in one line of pandas.
@@ -181,7 +193,7 @@ of columns, and this shape pivots in one line of pandas.
 | `vertex_index` | 0-based, in drawing order |
 | `x`, `y` | the vertex |
 
-### Pose types
+### `poses.csv`
 
 **One row per keypoint**, with the instance's box repeated. Wide format would break the
 moment two skeletons have different keypoint counts.
@@ -205,13 +217,12 @@ horizontally-flipped training images teach the model that left flippers are righ
 
 YOLO wants `class_id cx cy w h` normalised to 0–1, one `.txt` per image:
 
-Because each box type is its own file, concatenate the ones you want to train on:
+Every rectangle type is already in one file, and `class_name` becomes the class id:
 
 ```python
-import glob
 import pandas as pd
 
-df = pd.concat(pd.read_csv(f) for f in ["seal.csv", "bird.csv"])   # your box types
+df = pd.read_csv("rectangles.csv")
 classes = sorted(df.class_name.unique())
 
 for name, g in df.groupby("image_name"):
@@ -231,7 +242,7 @@ boxes, either widen them to their bounding box first or use an oriented-box mode
 Segmentation — `class_id x1 y1 x2 y2 …`, normalised, one line per polygon:
 
 ```python
-df = pd.read_csv("kelp.csv")
+df = pd.read_csv("polygons.csv")
 classes = sorted(df.class_name.unique())
 
 for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
@@ -264,7 +275,7 @@ Pose — `class_id cx cy w h  px py v  px py v …`, all normalised:
 
 ```python
 import json
-df = pd.read_csv("seal_pose.csv")
+df = pd.read_csv("poses.csv")
 skeletons = json.load(open("skeletons.json"))
 classes = sorted(df.class_name.unique())
 

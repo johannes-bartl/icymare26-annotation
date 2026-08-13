@@ -417,17 +417,24 @@
     }
   }
 
-  App.buildTypeCSV = function (t) {
-    var rows = [COLUMNS[t.shape].join(',')], s = App.state, i, j, img, list, m, inst;
+  /**
+   * All markers drawn in one mode, whichever type they belong to — every row
+   * carries its `class_name`, so one file per mode stays sortable by class.
+   */
+  App.buildShapeCSV = function (shape) {
+    var rows = [COLUMNS[shape].join(',')], s = App.state, i, j, img, list, m, t, inst;
     for (i = 0; i < s.images.length; i++) {
       img = s.images[i];
       list = s.markers[img.id] || [];
       inst = 0;
       for (j = 0; j < list.length; j++) {
         m = list[j];
-        if (m.typeId !== t.id) continue;
+        if (m.shape !== shape) continue;
+        t = App.getType(m.typeId);
         inst += 1;                       // 1-based, restarting on each image
-        appendRows(rows, [csvCell(img.name), num(img.w), num(img.h), csvCell(t.name)], m, t, inst);
+        appendRows(rows,
+          [csvCell(img.name), num(img.w), num(img.h), csvCell(t ? t.name : '(deleted type)')],
+          m, t, inst);
       }
     }
     return rows.join('\r\n') + '\r\n';
@@ -456,37 +463,56 @@
     return n;
   };
 
-  function slug(s) {
-    return String(s).toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'markers';
+  var SHAPE_ORDER = ['point', 'rect', 'ellipse', 'line', 'polygon', 'pose'];
+
+  var SHAPE_FILE = {
+    point: 'points.csv', rect: 'rectangles.csv', ellipse: 'ellipses.csv',
+    line: 'lines.csv', polygon: 'polygons.csv', pose: 'poses.csv'
+  };
+
+  var SHAPE_PLURAL = {
+    point: 'Points', rect: 'Rectangles', ellipse: 'Ellipses',
+    line: 'Lines', polygon: 'Polygons', pose: 'Poses'
+  };
+
+  /** Markers of one mode, and which types contributed them. */
+  function shapeTally(shape) {
+    var s = App.state, k, list, i, m, t, n = 0, names = [], seen = {};
+    for (k in s.markers) {
+      list = s.markers[k];
+      for (i = 0; i < list.length; i++) {
+        m = list[i];
+        if (m.shape !== shape) continue;
+        n += 1;
+        t = App.getType(m.typeId);
+        if (t && !seen[t.name]) { seen[t.name] = 1; names.push(t.name); }
+      }
+    }
+    return { count: n, types: names };
   }
 
   /**
-   * The files an export would produce right now: one per marker type that has
+   * The files an export would produce right now: one per drawing mode that has
    * anything in it, plus the blueprints when poses are involved. Drives both
    * the export menu and the download itself, so the menu can never offer a
    * file that would come out empty.
    */
   App.exportFiles = function () {
-    var out = [], used = {}, i, t, n, base, poses = 0;
+    var out = [], i, shape, tally, poses = 0;
 
-    for (i = 0; i < App.state.types.length; i++) {
-      t = App.state.types[i];
-      n = App.countOfType(t.id);
-      if (!n) continue;
-      if (t.shape === 'pose') poses += 1;
-
-      base = slug(t.name);
-      if (used[base]) { used[base] += 1; base += '_' + used[base]; } else { used[base] = 1; }
+    for (i = 0; i < SHAPE_ORDER.length; i++) {
+      shape = SHAPE_ORDER[i];
+      tally = shapeTally(shape);
+      if (!tally.count) continue;
+      if (shape === 'pose') poses = tally.count;
 
       out.push({
-        name: base + '.csv',
-        label: t.name,
-        shape: t.shape,
-        color: t.color,
-        count: n,
-        text: App.buildTypeCSV(t)
+        name: SHAPE_FILE[shape],
+        label: SHAPE_PLURAL[shape],
+        shape: shape,
+        types: tally.types,
+        count: tally.count,
+        text: App.buildShapeCSV(shape)
       });
     }
 
@@ -495,13 +521,22 @@
         name: 'skeletons.json',
         label: 'Skeleton blueprints',
         shape: 'pose',
-        color: null,
-        count: poses,
+        types: [],
+        count: poseTypeCount(),
+        isJSON: true,
         text: App.buildSkeletonsJSON()
       });
     }
     return out;
   };
+
+  function poseTypeCount() {
+    var n = 0, i;
+    for (i = 0; i < App.state.types.length; i++) {
+      if (App.state.types[i].shape === 'pose' && App.state.types[i].skeleton) n += 1;
+    }
+    return n;
+  }
 
   App.stamp = function () {
     var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
