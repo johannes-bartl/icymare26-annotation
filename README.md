@@ -57,13 +57,72 @@ A marker type is one annotation class: a name, a colour, an optional hotkey, and
 | Rectangle | dragging corner to corner (Shift = square) | optional |
 | Line | dragging from start to end | – |
 | Ellipse | dragging out its bounding box (Shift = circle) | optional |
+| Polygon | clicking each vertex, then the first one to close | – |
+| Pose | dragging a box, which fills with the type's skeleton | – |
 
 Deleting a marker type also deletes every marker placed with it; the confirmation dialog
 tells you how many.
 
-## CSV output
+### Polygons
 
-One row per marker, coordinates in **absolute image pixels**, origin at the top-left corner.
+Click out the vertices and close the ring by clicking the first vertex again (`Enter` and
+double-click also close it, `Backspace` removes the last vertex, `Esc` abandons the shape).
+Afterwards every vertex is a handle you can drag.
+
+Polygon types are either **things** or **stuff** — the COCO distinction. A *thing* is
+countable, so each polygon is one object and you get instance segmentation. *Stuff* is
+uncountable — water, sand, kelp — and collapses to one region per class, which is what
+semantic segmentation wants. The choice only affects how the export is read; both are
+annotated identically.
+
+### Poses
+
+A pose type carries a **skeleton blueprint**: an ordered list of named keypoints, the bones
+drawn between them, and which pairs mirror each other. Drag a box on the image and the whole
+skeleton drops in pre-posed, so you adjust points rather than placing them from nothing.
+
+- drag a keypoint to move it — that also marks it **confirmed**
+- `Alt`+click a keypoint to cycle **visible → occluded → absent**
+- points you have not touched are drawn hollow and faded, so an untouched template can
+  never pass for a finished annotation
+- resizing the box leaves the keypoints alone
+
+#### Skeleton blueprints
+
+Open the **Skeleton** editor from the marker type. On the pad: click empty space to add a
+keypoint, drag one to move it, and click two in turn to connect or disconnect them. Each new
+point chains onto the selected one, so drawing a limb is one click per joint. You can trace
+over one of your own loaded images, and start from a preset (quadruped, pinniped, bird, fish,
+or COCO-17 human).
+
+Where you place the points *is* the template pose, so it is worth arranging them roughly like
+a real animal.
+
+**Import and export the blueprint as JSON.** In a workshop this matters more than it sounds:
+if everyone defines their own skeleton you get mutually incompatible datasets. Hand out one
+`*_skeleton.json` and have everyone load it.
+
+The keypoint **order is the export index**, so once anything has been annotated with the type
+the editor locks adding, deleting and reordering. Renaming, moving the template and changing
+bones stay available, because none of those shift an index.
+
+## Export
+
+**Export CSV** writes whichever kinds of annotation you actually made. One kind downloads as
+a single file; several are bundled into a ZIP:
+
+| File | Written when |
+| --- | --- |
+| `annotations.csv` | any points, rectangles, lines or ellipses |
+| `polygons.csv` | any polygons |
+| `pose.csv` | any poses |
+| `skeletons.json` | any pose types, so the blueprints travel with the data |
+
+All coordinates are **absolute image pixels**, origin at the top-left corner.
+
+### `annotations.csv`
+
+One row per marker.
 
 | Column | Meaning |
 | --- | --- |
@@ -85,6 +144,41 @@ One row per marker, coordinates in **absolute image pixels**, origin at the top-
 For a rotated box or ellipse, `x`, `y`, `w`, `h` describe it **before** rotation and
 `angle_deg` turns it about its centre — so the four numbers stay exact, and at
 `angle_deg = 0` they are simply the axis-aligned bounding box.
+
+### `polygons.csv`
+
+**One row per vertex** — a variable number of vertices does not belong in a variable number
+of columns, and this shape pivots in one line of pandas.
+
+| Column | Meaning |
+| --- | --- |
+| `image_name`, `image_width`, `image_height` | the source image |
+| `class_name` | the marker type's name |
+| `kind` | `thing` or `stuff` |
+| `instance_id` | 1-based, restarting on each image |
+| `n_vertices`, `area_px` | repeated on every row of the polygon, for convenience |
+| `vertex_index` | 0-based, in drawing order |
+| `x`, `y` | the vertex |
+
+### `pose.csv`
+
+**One row per keypoint**, with the instance's box repeated. Wide format would break the
+moment two skeletons have different keypoint counts.
+
+| Column | Meaning |
+| --- | --- |
+| `image_name`, `image_width`, `image_height` | the source image |
+| `class_name`, `instance_id` | which animal, 1-based per image |
+| `box_x`, `box_y`, `box_w`, `box_h` | its bounding box, repeated on every row |
+| `keypoint_index`, `keypoint_name` | position in the skeleton — the index is what YOLO uses |
+| `x`, `y` | the keypoint, empty when it is absent |
+| `visibility` | `2` visible · `1` labelled but occluded · `0` not present |
+
+### `skeletons.json`
+
+One entry per pose type, holding its blueprint plus `kpt_shape` and `flip_idx` ready for
+ultralytics. `flip_idx` is the permutation that maps each keypoint to its mirror — without it,
+horizontally-flipped training images teach the model that left flippers are right flippers.
 
 ### Converting to YOLO
 
@@ -110,6 +204,63 @@ for name, g in df.groupby("image_name"):
 
 (YOLO boxes are axis-aligned, so this assumes `angle_deg` is 0. If you annotate rotated
 boxes, either widen them to their bounding box first or use an oriented-box model.)
+
+Segmentation — `class_id x1 y1 x2 y2 …`, normalised, one line per polygon:
+
+```python
+df = pd.read_csv("polygons.csv")
+classes = sorted(df.class_name.unique())
+
+for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
+    g = g.sort_values("vertex_index")
+    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
+    coords = " ".join(f"{x / W:.6f} {y / H:.6f}" for x, y in zip(g.x, g.y))
+    with open(img.rsplit(".", 1)[0] + ".txt", "a") as f:
+        f.write(f"{classes.index(g.class_name.iloc[0])} {coords}\n")
+```
+
+To get **pixel masks** instead, rasterise the same polygons — you never need the brush:
+
+```python
+import numpy as np
+from PIL import Image, ImageDraw
+
+for img, g in df.groupby("image_name"):
+    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
+    mask = Image.new("L", (W, H), 0)
+    for _, inst in g.groupby("instance_id", sort=False):
+        inst = inst.sort_values("vertex_index")
+        ImageDraw.Draw(mask).polygon(
+            list(zip(inst.x, inst.y)),
+            fill=classes.index(inst.class_name.iloc[0]) + 1,   # 0 stays background
+        )
+    mask.save(img.rsplit(".", 1)[0] + "_mask.png")
+```
+
+Pose — `class_id cx cy w h  px py v  px py v …`, all normalised:
+
+```python
+import json
+df = pd.read_csv("pose.csv")
+skeletons = json.load(open("skeletons.json"))
+classes = sorted(df.class_name.unique())
+
+for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
+    g = g.sort_values("keypoint_index")
+    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
+    b = g.iloc[0]
+    box = (f"{(b.box_x + b.box_w / 2) / W:.6f} {(b.box_y + b.box_h / 2) / H:.6f} "
+           f"{b.box_w / W:.6f} {b.box_h / H:.6f}")
+    kps = " ".join(
+        f"{0 if r.visibility == 0 else r.x / W:.6f} "
+        f"{0 if r.visibility == 0 else r.y / H:.6f} {int(r.visibility)}"
+        for r in g.itertuples()
+    )
+    with open(img.rsplit(".", 1)[0] + ".txt", "a") as f:
+        f.write(f"{classes.index(b.class_name)} {box} {kps}\n")
+```
+
+The matching `data.yaml` takes `kpt_shape` and `flip_idx` straight out of `skeletons.json`.
 
 ## Notes
 

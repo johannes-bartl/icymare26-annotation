@@ -136,9 +136,16 @@
 
   function exportCSV() {
     if (!App.totalMarkers()) { UI.toast('Nothing to export yet'); return; }
-    App.downloadCSV();
-    UI.toast('Exported ' + App.totalMarkers() + ' markers');
+    var n = App.exportAll(), tally = App.exportTally(), bits = [];
+    if (tally.basic) bits.push(tally.basic + ' markers');
+    if (tally.polygon) bits.push(tally.polygon + ' polygons');
+    if (tally.pose) bits.push(tally.pose + ' poses');
+    UI.toast('Exported ' + bits.join(' · ') + (n > 1 ? ' as a ZIP' : ''));
   }
+
+  UI.downloadText = function (text, filename, mime) {
+    App.download(new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' }), filename);
+  };
 
   /* ============================================================ file intake */
 
@@ -240,6 +247,7 @@
 
   function selectImage(id) {
     if (App.state.activeImageId === id) return;
+    Canvas.cancelPending();
     App.state.activeImageId = id;
     App.state.selection = [];
     Canvas.showImage(App.activeImage(), refresh);
@@ -294,6 +302,11 @@
                 '<span class="type-shape" title="' + App.SHAPE_LABEL[t.shape] +
                   (t.rotatable ? ' (rotatable)' : '') + '">' + window.svgIcon(t.shape, 16) + '</span>' +
                 '<span class="type-name" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
+                (t.shape === 'polygon' && t.kind === 'stuff'
+                  ? '<span class="type-kind" title="Stuff — uncountable region">stuff</span>' : '') +
+                (t.shape === 'pose' && t.skeleton
+                  ? '<span class="type-kind" title="' + t.skeleton.keypoints.length + ' keypoints">' +
+                    t.skeleton.keypoints.length + 'kp</span>' : '') +
                 (t.rotatable ? '<span class="type-rot" title="Rotatable">' + window.svgIcon('rotate', 13) + '</span>' : '') +
                 '<span class="pill count" title="markers placed">' + n + '</span>' +
                 '<span class="key' + (t.hotkey ? '' : ' none') + '">' + (t.hotkey || '–') + '</span>' +
@@ -310,6 +323,7 @@
     var btn = e.target.closest('[data-act]');
     if (btn && btn.dataset.act === 'edit') { openTypeEditor(row.dataset.id); return; }
     if (btn && btn.dataset.act === 'del') { askDeleteType(row.dataset.id); return; }
+    Canvas.cancelPending();
     App.state.activeTypeId = row.dataset.id;
     App.save();
     refresh();
@@ -333,6 +347,11 @@
     $('st-count').textContent = img ? App.countOfImage(img.id) + ' markers' : '';
     $('st-sel').textContent = App.state.selection.length ? App.state.selection.length + ' selected' : '';
     $('st-rot').textContent = Canvas.view.rot ? 'view rotated ' + (Canvas.view.rot * 90) + '°' : '';
+    var pv = Canvas.pendingCount();
+    $('st-hint').textContent = Canvas.hasPending()
+      ? pv + (pv === 1 ? ' vertex' : ' vertices') +
+        (pv >= 3 ? ' · click the first point, or Enter, to close' : ' · keep clicking') + ' · Esc cancels'
+      : '';
     $('imgnav-label').textContent = (idx + 1) + ' / ' + n;
     $('btn-zoom-level').textContent = Math.round(Canvas.view.scale * 100) + '%';
   }
@@ -356,8 +375,15 @@
     var t = typeId ? App.getType(typeId) : null;
     editingTypeId = typeId || null;
     draft = t
-      ? { name: t.name, shape: t.shape, rotatable: !!t.rotatable, color: t.color, hotkey: t.hotkey }
-      : { name: '', shape: 'rect', rotatable: false, color: nextColor(), hotkey: nextHotkey() };
+      ? {
+          name: t.name, shape: t.shape, rotatable: !!t.rotatable, color: t.color,
+          hotkey: t.hotkey, kind: t.kind || 'thing',
+          skeleton: t.skeleton ? window.Skeleton.clone(t.skeleton) : null
+        }
+      : {
+          name: '', shape: 'rect', rotatable: false, color: nextColor(),
+          hotkey: nextHotkey(), kind: 'thing', skeleton: null
+        };
 
     $('modal-type-title').textContent = t ? 'Edit marker type' : 'New marker type';
     $('f-save').textContent = t ? 'Save' : 'Create';
@@ -368,7 +394,7 @@
     renderSwatches();
     renderKeys();
     syncColorInputs();
-    syncRotatable();
+    syncShapeFields();
 
     openModal('modal-type');
     setTimeout(function () { $('f-name').focus(); }, 30);
@@ -395,11 +421,23 @@
     }
   }
 
-  function syncRotatable() {
-    var canRotate = draft.shape === 'rect' || draft.shape === 'ellipse';
+  /** Show only the fields that mean anything for the chosen mode. */
+  function syncShapeFields() {
+    var canRotate = draft.shape === 'rect' || draft.shape === 'ellipse',
+        isPoly = draft.shape === 'polygon',
+        isPose = draft.shape === 'pose', i, opts;
+
     $('f-rotatable-wrap').hidden = !canRotate;
     if (!canRotate) draft.rotatable = false;
     $('f-rotatable').checked = draft.rotatable;
+
+    $('f-kind-wrap').hidden = !isPoly;
+    opts = document.querySelectorAll('#f-kind .segopt');
+    for (i = 0; i < opts.length; i++) opts[i].classList.toggle('active', opts[i].dataset.kind === draft.kind);
+
+    $('f-skel-wrap').hidden = !isPose;
+    if (isPose && !draft.skeleton) draft.skeleton = window.Skeleton.clone(window.Skeleton.PRESETS.quadruped);
+    $('f-skel-summary').textContent = draft.skeleton ? window.Skeleton.summary(draft.skeleton) : 'no keypoints yet';
   }
 
   function renderSwatches() {
@@ -459,10 +497,38 @@
       if (!b) return;
       draft.shape = b.dataset.shape;
       renderShapes();
-      syncRotatable();
+      syncShapeFields();
     });
 
     $('f-rotatable').addEventListener('change', function () { draft.rotatable = this.checked; });
+
+    $('f-kind').addEventListener('click', function (e) {
+      var b = e.target.closest('.segopt');
+      if (!b) return;
+      draft.kind = b.dataset.kind;
+      syncShapeFields();
+    });
+
+    $('f-skel-edit').addEventListener('click', function () {
+      var used = editingTypeId ? App.countOfType(editingTypeId) : 0;
+      window.Skeleton.open(
+        draft.skeleton,
+        {
+          locked: used > 0,
+          lockReason: 'Keypoints are locked: ' + used +
+                      (used === 1 ? ' pose already uses' : ' poses already use') +
+                      ' this skeleton, and their order is the export order. ' +
+                      'You can still rename points, move the template and change bones.'
+        },
+        function (result) {
+          if (result) {
+            draft.skeleton = result;
+            $('f-skel-summary').textContent = window.Skeleton.summary(result);
+          }
+          openModal('modal-type');
+        }
+      );
+    });
 
     $('f-swatches').addEventListener('click', function (e) {
       var b = e.target.closest('.swatch');
@@ -505,6 +571,10 @@
     var name = (draft.name || '').trim();
     if (!name) { showFormError('Give the marker type a name.'); return; }
     if (!normHex(draft.color)) { showFormError('That colour is not a valid hex value.'); return; }
+    if (draft.shape === 'pose' && (!draft.skeleton || !draft.skeleton.keypoints.length)) {
+      showFormError('A pose type needs a skeleton with at least one keypoint.');
+      return;
+    }
 
     if (editingTypeId) {
       var t = App.getType(editingTypeId);
@@ -513,13 +583,16 @@
       t.rotatable = !!draft.rotatable;
       t.color = draft.color;
       t.hotkey = draft.hotkey;
+      t.kind = draft.kind;
+      t.skeleton = draft.skeleton;
       if (t.shape !== draft.shape && App.countOfType(t.id) === 0) t.shape = draft.shape;
       else if (t.shape !== draft.shape) UI.toast('Mode kept — markers of this type already exist');
     } else {
       App.pushUndo();
       var nt = {
         id: App.uid('t'), name: name, shape: draft.shape,
-        rotatable: !!draft.rotatable, color: draft.color, hotkey: draft.hotkey
+        rotatable: !!draft.rotatable, color: draft.color, hotkey: draft.hotkey,
+        kind: draft.kind, skeleton: draft.skeleton
       };
       App.state.types.push(nt);
       App.state.activeTypeId = nt.id;
@@ -566,6 +639,11 @@
     editingTypeId = null;
   }
 
+  /* The skeleton editor opens over the type editor and hands control back to
+     it, so the draft type survives the round trip. */
+  UI.openModalStacked = function (id) { openModal(id); };
+  UI.closeModalStacked = function () { els.modalRoot.hidden = true; };
+
   function modalOpen() { return !els.modalRoot.hidden; }
 
   /* =============================================================== keyboard */
@@ -606,6 +684,7 @@
         var ts = App.state.types, i;
         for (i = 0; i < ts.length; i++) {
           if (ts[i].hotkey === k) {
+            Canvas.cancelPending();
             App.state.activeTypeId = ts[i].id;
             setTool('annotate');
             App.save(); refresh();
@@ -628,7 +707,11 @@
         case '.': step(1); break;
         case 'ArrowLeft': step(-1); break;
         case 'ArrowRight': step(1); break;
+        case 'Enter':
+          if (Canvas.hasPending()) { e.preventDefault(); Canvas.commitPending(); }
+          break;
         case 'Delete': case 'Backspace':
+          if (Canvas.hasPending()) { e.preventDefault(); Canvas.popPendingVertex(); break; }
           if (App.state.selection.length) {
             e.preventDefault();
             App.deleteMarkers(App.state.selection.slice());
@@ -636,6 +719,7 @@
           }
           break;
         case 'Escape':
+          if (Canvas.cancelPending()) break;
           App.state.selection = [];
           refresh(); Canvas.render();
           break;

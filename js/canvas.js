@@ -36,8 +36,11 @@
 
   var imgCache = {};           // imageId -> HTMLImageElement
 
+  var CLOSE_TOL = 10;          // screen px around the first vertex that closes a polygon
+
   /* interaction state */
   var drag = null;             // {mode, ...}
+  var pending = null;          // polygon under construction: {type, pts, cursor}
   var hoverEdgeId = null;      // marker whose handles are currently revealed
   var hoverBodyId = null;      // marker under the cursor (delete / select tool)
   var hoverHandle = null;
@@ -61,6 +64,7 @@
     canvas.addEventListener('pointercancel', onPointerUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    canvas.addEventListener('dblclick', function () { if (pending) Canvas.commitPending(); });
     stage.addEventListener('pointerleave', onLeave);
   };
 
@@ -234,6 +238,7 @@
 
     /* in-progress shape */
     if (drag && drag.mode === 'create' && drag.preview) drawMarker(drag.preview, false, true);
+    if (pending) drawPending();
 
     /* rubber band */
     if (drag && drag.mode === 'band') {
@@ -250,7 +255,23 @@
   }
 
   function pathFor(m) {
-    var c, hw, hh, p1, p2;
+    var c, hw, hh, p1, p2, i;
+    if (m.shape === 'polygon') {
+      ctx.beginPath();
+      for (i = 0; i < m.pts.length; i++) {
+        c = toScreen(m.pts[i][0], m.pts[i][1]);
+        if (i === 0) ctx.moveTo(c.x, c.y); else ctx.lineTo(c.x, c.y);
+      }
+      ctx.closePath();
+      return;
+    }
+    if (m.shape === 'pose') {
+      c = toScreen(m.cx - m.w / 2, m.cy - m.h / 2);
+      p1 = toScreen(m.cx + m.w / 2, m.cy + m.h / 2);
+      ctx.beginPath();
+      ctx.rect(c.x, c.y, p1.x - c.x, p1.y - c.y);
+      return;
+    }
     if (m.shape === 'rect' || m.shape === 'ellipse') {
       c = toScreen(m.cx, m.cy);
       hw = Math.max((m.w / 2) * view.scale, .5);
@@ -295,8 +316,12 @@
       ctx.fillStyle = stroke; ctx.fill();
       ctx.beginPath(); ctx.arc(c.x, c.y, active || selected ? 10 : 8, 0, Math.PI * 2);
       ctx.stroke();
-    } else if (m.shape === 'line') {
+    } else if (m.shape === 'pose') {
+      ctx.setLineDash(ghost ? [5, 4] : [6, 5]);   // the box is context, not the annotation
+      ctx.lineWidth = 1.5;
       pathFor(m); ctx.stroke();
+      ctx.setLineDash([]);
+      drawSkeleton(m, stroke, active || selected);
     } else {
       pathFor(m); ctx.stroke();
     }
@@ -318,10 +343,141 @@
     void p1; void p2;
   }
 
+  /** The polygon being clicked out, with a rubber band to the cursor. */
+  function drawPending() {
+    var color = pending.type.color, i, p, first, closable;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (i = 0; i < pending.pts.length; i++) {
+      p = toScreen(pending.pts[i][0], pending.pts[i][1]);
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+
+    if (pending.cursor) {
+      p = toScreen(pending.pts[pending.pts.length - 1][0], pending.pts[pending.pts.length - 1][1]);
+      var c = toScreen(pending.cursor.x, pending.cursor.y);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = hexA(color, .8);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(c.x, c.y); ctx.stroke();
+      if (pending.pts.length >= 2) {
+        first = toScreen(pending.pts[0][0], pending.pts[0][1]);
+        ctx.strokeStyle = hexA(color, .35);
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(first.x, first.y); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    for (i = 0; i < pending.pts.length; i++) {
+      p = toScreen(pending.pts[i][0], pending.pts[i][1]);
+      closable = i === 0 && pending.pts.length >= 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, closable ? 6 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = closable ? '#fff' : color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = closable ? color : '#0e1116';
+      ctx.stroke();
+    }
+  }
+
+  function hexA(hex, alpha) {
+    var h = hex.replace('#', ''), r, g, b;
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  function readableOn(hex) {
+    var h = hex.replace('#', ''), r, g, b;
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#10141a' : '#ffffff';
+  }
+
+  /**
+   * Bones, then keypoints. A point the user has not confirmed yet is drawn
+   * hollow and faded, so a template that was dropped in and never adjusted
+   * can never be mistaken for a finished annotation.
+   */
+  function drawSkeleton(m, color, active) {
+    var t = App.getType(m.typeId), sk = t && t.skeleton, i, e, a, b, k, p, r, tag = null;
+    if (!sk) return;
+
+    ctx.lineWidth = 2;
+    for (i = 0; i < sk.edges.length; i++) {
+      e = sk.edges[i];
+      a = m.kps[e[0]]; b = m.kps[e[1]];
+      if (!a || !b || a[2] === App.VIS.ABSENT || b[2] === App.VIS.ABSENT) continue;
+      ctx.strokeStyle = hexA(color, (a[3] && b[3]) ? 0.9 : 0.3);
+      var pa = toScreen(a[0], a[1]), pb = toScreen(b[0], b[1]);
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    }
+
+    for (i = 0; i < m.kps.length; i++) {
+      k = m.kps[i];
+      p = toScreen(k[0], k[1]);
+      r = active ? 5 : 4;
+
+      if (k[2] === App.VIS.ABSENT) {                      // absent: a faint cross
+        ctx.strokeStyle = hexA(color, .35);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x - 3.5, p.y - 3.5); ctx.lineTo(p.x + 3.5, p.y + 3.5);
+        ctx.moveTo(p.x + 3.5, p.y - 3.5); ctx.lineTo(p.x - 3.5, p.y + 3.5);
+        ctx.stroke();
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      if (k[2] === App.VIS.VISIBLE && k[3]) {
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.stroke();
+      } else {                                            // occluded, or untouched
+        ctx.fillStyle = 'rgba(10,14,20,.65)'; ctx.fill();
+        ctx.strokeStyle = hexA(color, k[3] ? .95 : .45);
+        ctx.lineWidth = k[3] ? 2 : 1.5;
+        if (!k[3]) ctx.setLineDash([2, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      /* name the point the cursor is actually on — all 17 at once is noise.
+         Held back to a second pass so later keypoints cannot paint over it. */
+      if (hoverHandle && hoverHandle.marker === m && hoverHandle.id === 'k' + i && sk.keypoints[i]) {
+        tag = { text: sk.keypoints[i].name + visSuffix(k[2]), x: p.x + 9, y: p.y - 8 };
+      }
+    }
+
+    if (tag) drawTag(tag.text, tag.x, tag.y, color);
+  }
+
+  function visSuffix(v) {
+    return v === App.VIS.OCCLUDED ? '  (occluded)' : (v === App.VIS.ABSENT ? '  (absent)' : '');
+  }
+
+  function drawTag(text, x, y, color) {
+    ctx.font = '600 11px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif';
+    var w = ctx.measureText(text).width + 10, h = 16;
+    ctx.fillStyle = hexA(color, .95);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y - h / 2, w, h, 3); else ctx.rect(x, y - h / 2, w, h);
+    ctx.fill();
+    ctx.fillStyle = readableOn(color);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 5, y + .5);
+  }
+
   function drawHandles(m) {
     var hs = handlesOf(m), i, h;
     for (i = 0; i < hs.length; i++) {
       h = hs[i];
+      /* a pose keypoint is already drawn by the skeleton — a white blob on top
+         of it would only hide the visibility state */
+      if (h.kp) continue;
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#0e1116';
       ctx.lineWidth = 1;
@@ -334,7 +490,7 @@
         ctx.beginPath(); ctx.arc(h.x, h.y, HANDLE_R + .5, 0, Math.PI * 2);
         ctx.fillStyle = '#fff'; ctx.fill();
         ctx.strokeStyle = '#0e1116'; ctx.stroke();
-      } else if (m.shape === 'line' || m.shape === 'point') {
+      } else if (m.shape === 'line' || m.shape === 'point' || m.shape === 'polygon') {
         ctx.beginPath(); ctx.arc(h.x, h.y, HANDLE_R, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
       } else {
@@ -373,6 +529,27 @@
     if (m.shape === 'line') {
       var p1 = toScreen(m.x1, m.y1), p2 = toScreen(m.x2, m.y2);
       return [{ id: 'p1', x: p1.x, y: p1.y }, { id: 'p2', x: p2.x, y: p2.y }];
+    }
+    if (m.shape === 'polygon') {
+      for (i = 0; i < m.pts.length; i++) {
+        g = toScreen(m.pts[i][0], m.pts[i][1]);
+        out.push({ id: 'v' + i, x: g.x, y: g.y });
+      }
+      return out;
+    }
+    if (m.shape === 'pose') {
+      /* corners only — a pose already carries a handle per keypoint, and eight
+         box handles on top of seventeen points is unusable */
+      var cs = [['nw', -1, -1], ['ne', 1, -1], ['se', 1, 1], ['sw', -1, 1]];
+      for (i = 0; i < cs.length; i++) {
+        g = toScreen(m.cx + cs[i][1] * m.w / 2, m.cy + cs[i][2] * m.h / 2);
+        out.push({ id: cs[i][0], x: g.x, y: g.y });
+      }
+      for (i = 0; i < m.kps.length; i++) {
+        g = toScreen(m.kps[i][0], m.kps[i][1]);
+        out.push({ id: 'k' + i, x: g.x, y: g.y, kp: true });
+      }
+      return out;
     }
     for (i = 0; i < RECT_HANDLES.length; i++) {
       h = RECT_HANDLES[i];
@@ -424,9 +601,26 @@
 
   /** Cursor within `tol` image px of the marker's outline. */
   function nearOutline(m, ix, iy, tol) {
-    var l, dx, dy, r, ex, ey;
+    var l, dx, dy, r, ex, ey, i, j;
     if (m.shape === 'point') return Math.hypot(ix - m.cx, iy - m.cy) <= tol;
     if (m.shape === 'line') return App.distToSegment(ix, iy, m.x1, m.y1, m.x2, m.y2) <= tol;
+
+    if (m.shape === 'polygon') {
+      for (i = 0, j = m.pts.length - 1; i < m.pts.length; j = i++) {
+        if (App.distToSegment(ix, iy, m.pts[j][0], m.pts[j][1], m.pts[i][0], m.pts[i][1]) <= tol) return true;
+      }
+      return false;
+    }
+
+    if (m.shape === 'pose') {
+      for (i = 0; i < m.kps.length; i++) {
+        if (Math.hypot(ix - m.kps[i][0], iy - m.kps[i][1]) <= tol) return true;
+      }
+      dx = Math.abs(ix - m.cx) - m.w / 2;
+      dy = Math.abs(iy - m.cy) - m.h / 2;
+      if (dx <= 0 && dy <= 0) return Math.min(-dx, -dy) <= tol;
+      return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) <= tol;
+    }
 
     l = App.toLocal(ix, iy, m.cx, m.cy, m.angle || 0);
     if (m.shape === 'rect') {
@@ -446,6 +640,12 @@
     var l, ex, ey;
     if (m.shape === 'point') return Math.hypot(ix - m.cx, iy - m.cy) <= tol;
     if (m.shape === 'line') return App.distToSegment(ix, iy, m.x1, m.y1, m.x2, m.y2) <= tol;
+    if (m.shape === 'polygon') {
+      return App.pointInPolygon(ix, iy, m.pts) || nearOutline(m, ix, iy, tol);
+    }
+    if (m.shape === 'pose') {
+      return Math.abs(ix - m.cx) <= m.w / 2 + tol && Math.abs(iy - m.cy) <= m.h / 2 + tol;
+    }
     l = App.toLocal(ix, iy, m.cx, m.cy, m.angle || 0);
     if (m.shape === 'rect') return Math.abs(l.x) <= m.w / 2 + tol && Math.abs(l.y) <= m.h / 2 + tol;
     ex = Math.max(m.w / 2, .5); ey = Math.max(m.h / 2, .5);
@@ -500,6 +700,9 @@
     }
     if (e.button !== 0) return;
 
+    /* a polygon in progress owns every click until it is closed or cancelled */
+    if (pending) { addPendingVertex(p, ip); return; }
+
     /* delete mode: whatever is highlighted goes */
     if (isDeleteMode()) {
       var victim = topmost(ip.x, ip.y, insideMarker, HIT_TOL / view.scale);
@@ -514,6 +717,15 @@
     /* a revealed handle always wins */
     var h = armedHandleAt(p.x, p.y);
     if (h) {
+      /* Alt on a keypoint steps it through visible -> occluded -> absent */
+      if (e.altKey && h.id.charAt(0) === 'k' && h.marker.shape === 'pose') {
+        App.pushUndo();
+        var kp = h.marker.kps[+h.id.slice(1)];
+        kp[2] = (kp[2] + 2) % 3;     // 2 -> 1 -> 0 -> 2
+        kp[3] = 1;
+        refresh();
+        return;
+      }
       App.pushUndo();
       drag = h.id === 'rot'
         ? { mode: 'rotate', m: h.marker }
@@ -540,9 +752,63 @@
     if (!type) { window.UI && window.UI.toast('Create a marker type first'); return; }
 
     App.state.selection = [];
+
+    if (type.shape === 'polygon') {
+      pending = { type: type, pts: [[ip.x, ip.y]], cursor: { x: ip.x, y: ip.y } };
+      hoverEdgeId = null;
+      refresh();
+      return;
+    }
+
     drag = { mode: 'create', type: type, sx: ip.x, sy: ip.y, preview: null };
     refresh();
   }
+
+  /* ------------------------------------------------------ polygon building */
+
+  function addPendingVertex(p, ip) {
+    var first = toScreen(pending.pts[0][0], pending.pts[0][1]);
+    if (pending.pts.length >= 3 && Math.hypot(p.x - first.x, p.y - first.y) <= CLOSE_TOL) {
+      Canvas.commitPending();
+      return;
+    }
+    var last = pending.pts[pending.pts.length - 1];
+    if (Math.hypot(ip.x - last[0], ip.y - last[1]) < MIN_SIZE / view.scale) return;  // ignore a stutter
+    pending.pts.push([ip.x, ip.y]);
+    if (window.UI) window.UI.updateStatus();
+    Canvas.render();
+  }
+
+  Canvas.hasPending = function () { return !!pending; };
+
+  Canvas.commitPending = function () {
+    if (!pending) return false;
+    var pts = pending.pts, type = pending.type;
+    pending = null;
+    if (pts.length < 3) { refresh(); return false; }
+    var m = { id: App.uid('m'), typeId: type.id, shape: 'polygon', angle: 0, pts: pts };
+    App.addMarker(m);
+    hoverEdgeId = m.id;
+    refresh();
+    return true;
+  };
+
+  Canvas.cancelPending = function () {
+    if (!pending) return false;
+    pending = null;
+    refresh();
+    return true;
+  };
+
+  Canvas.popPendingVertex = function () {
+    if (!pending) return false;
+    pending.pts.pop();
+    if (!pending.pts.length) pending = null;
+    refresh();
+    return true;
+  };
+
+  Canvas.pendingCount = function () { return pending ? pending.pts.length : 0; };
 
   function onPointerMove(e) {
     var p = evPos(e), ip = toImage(p.x, p.y), img = App.activeImage();
@@ -550,6 +816,15 @@
     if (window.UI) {
       window.UI.setCursorReadout(ip, img);
       window.UI.moveBinCursor(e.clientX, e.clientY, isDeleteMode());
+    }
+
+    if (pending) {
+      pending.cursor = ip;
+      var f = toScreen(pending.pts[0][0], pending.pts[0][1]);
+      canvas.style.cursor = (pending.pts.length >= 3 && Math.hypot(p.x - f.x, p.y - f.y) <= CLOSE_TOL)
+        ? 'pointer' : 'crosshair';
+      Canvas.render();
+      return;
     }
 
     if (!drag) { updateHover(p, ip); return; }
@@ -627,6 +902,11 @@
         b = App.bboxOf(m);
         if ((b.x2 - b.x1) < MIN_SIZE && (b.y2 - b.y1) < MIN_SIZE) { refresh(); return; }
       }
+      /* a pose box becomes a pre-posed skeleton the moment it is released */
+      if (d.type.shape === 'pose') {
+        b = App.bboxOf(m);
+        m = App.makePose(d.type, b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+      }
       c = App.centerOf(m);
       if (img && (c.x < 0 || c.y < 0 || c.x > img.w || c.y > img.h)) { refresh(); return; }
       App.addMarker(m);
@@ -660,6 +940,7 @@
     var m = { id: App.uid('m'), typeId: type.id, shape: type.shape, angle: 0 }, w, h, s;
     if (type.shape === 'point') { m.cx = x0; m.cy = y0; m.w = 0; m.h = 0; return m; }
     if (type.shape === 'line') { m.x1 = x0; m.y1 = y0; m.x2 = x1; m.y2 = y1; return m; }
+    if (type.shape === 'pose') m.kps = [];        // filled in on release
     w = Math.abs(x1 - x0); h = Math.abs(y1 - y0);
     if (square) { s = Math.max(w, h); w = s; h = s; }
     m.cx = x0 + (x1 >= x0 ? w / 2 : -w / 2);
@@ -669,13 +950,39 @@
   }
 
   function doResize(ip, keepRatio) {
-    var m = drag.m, o = drag.orig, id = drag.handle;
+    var m = drag.m, o = drag.orig, id = drag.handle, k;
 
     if (m.shape === 'line') {
       if (id === 'p1') { m.x1 = ip.x; m.y1 = ip.y; } else { m.x2 = ip.x; m.y2 = ip.y; }
       return;
     }
     if (m.shape === 'point') { m.cx = ip.x; m.cy = ip.y; return; }
+
+    if (m.shape === 'polygon') {
+      k = +id.slice(1);
+      m.pts[k][0] = ip.x; m.pts[k][1] = ip.y;
+      return;
+    }
+
+    if (m.shape === 'pose') {
+      if (id.charAt(0) === 'k') {                 // dragging a keypoint confirms it
+        k = +id.slice(1);
+        m.kps[k][0] = ip.x; m.kps[k][1] = ip.y;
+        m.kps[k][3] = 1;
+        if (m.kps[k][2] === App.VIS.ABSENT) m.kps[k][2] = App.VIS.VISIBLE;
+        return;
+      }
+      /* box corner — the keypoints stay put, the box is only the animal's extent */
+      var left = o.cx - o.w / 2, right = o.cx + o.w / 2,
+          top = o.cy - o.h / 2, bottom = o.cy + o.h / 2;
+      if (id.indexOf('w') !== -1) left = Math.min(ip.x, right - MIN_SIZE);
+      if (id.indexOf('e') !== -1) right = Math.max(ip.x, left + MIN_SIZE);
+      if (id.indexOf('n') !== -1) top = Math.min(ip.y, bottom - MIN_SIZE);
+      if (id.indexOf('s') !== -1) bottom = Math.max(ip.y, top + MIN_SIZE);
+      m.cx = (left + right) / 2; m.cy = (top + bottom) / 2;
+      m.w = right - left; m.h = bottom - top;
+      return;
+    }
 
     var l = App.toLocal(ip.x, ip.y, o.cx, o.cy, o.angle || 0),
         left = -o.w / 2, right = o.w / 2, top = -o.h / 2, bottom = o.h / 2,
@@ -731,9 +1038,11 @@
     else if (spaceDown) c = 'grab';
     else if (isDeleteMode()) c = 'default';
     else if (hoverHandle) {
-      if (hoverHandle.id === 'rot') c = 'grab';
-      else if (hoverHandle.id === 'c' || hoverHandle.id === 'p1' || hoverHandle.id === 'p2') c = 'move';
-      else c = (CURSOR_FOR[apparent(hoverHandle.id)] || 'nwse') + '-resize';
+      var id = hoverHandle.id;
+      if (id === 'rot') c = 'grab';
+      else if (id === 'c' || id === 'p1' || id === 'p2' ||
+               id.charAt(0) === 'v' || id.charAt(0) === 'k') c = 'move';
+      else c = (CURSOR_FOR[apparent(id)] || 'nwse') + '-resize';
     } else if (App.state.tool === 'select') c = 'default';
     else if (App.activeType()) c = 'crosshair';
     canvas.style.cursor = c;

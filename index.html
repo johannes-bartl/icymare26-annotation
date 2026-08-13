@@ -120,6 +120,7 @@
         <span id="st-dims"></span>
         <span id="st-cursor"></span>
         <span id="st-rot"></span>
+        <span id="st-hint" class="st-hint"></span>
         <span class="spacer"></span>
         <span id="st-count"></span>
         <span id="st-sel"></span>
@@ -135,6 +136,7 @@
 <!-- hidden inputs -->
 <input type="file" id="input-files" accept="image/*" multiple hidden>
 <input type="file" id="input-folder" accept="image/*" multiple webkitdirectory hidden>
+<input type="file" id="skel-file" accept=".json,application/json" hidden>
 
 <!-- ───────────────────────── modals ───────────────────────── -->
 <div class="modal-root" id="modal-root" hidden>
@@ -168,6 +170,32 @@
           <button type="button" class="shapeopt" data-shape="ellipse">
             <span data-icon="ellipse"></span><span>Ellipse</span>
           </button>
+          <button type="button" class="shapeopt" data-shape="polygon">
+            <span data-icon="polygon"></span><span>Polygon</span>
+          </button>
+          <button type="button" class="shapeopt" data-shape="pose">
+            <span data-icon="pose"></span><span>Pose</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="field" id="f-kind-wrap">
+        <span class="field-label">Region kind</span>
+        <div class="segrow" id="f-kind">
+          <button type="button" class="segopt" data-kind="thing">
+            Thing<small>Countable — each polygon is one object</small>
+          </button>
+          <button type="button" class="segopt" data-kind="stuff">
+            Stuff<small>Uncountable — water, sand, kelp</small>
+          </button>
+        </div>
+      </div>
+
+      <div class="field" id="f-skel-wrap">
+        <span class="field-label">Skeleton</span>
+        <div class="skelrow">
+          <span class="skelrow-text" id="f-skel-summary">no keypoints yet</span>
+          <button type="button" class="btn" id="f-skel-edit">Edit…</button>
         </div>
       </div>
 
@@ -203,6 +231,70 @@
     </div>
   </div>
 
+  <!-- skeleton blueprint editor -->
+  <div class="modal wide" id="modal-skeleton" hidden>
+    <div class="modal-head">
+      <h3>Skeleton blueprint</h3>
+      <button class="iconbtn" data-close><span data-icon="x"></span></button>
+    </div>
+    <div class="modal-body skel-body">
+
+      <div class="skel-top">
+        <label class="field grow">
+          <span class="field-label">Blueprint name</span>
+          <input type="text" id="skel-name" maxlength="60" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="field-label">Start from</span>
+          <select id="skel-preset">
+            <option value="">Preset…</option>
+            <option value="quadruped">Quadruped</option>
+            <option value="pinniped">Pinniped</option>
+            <option value="bird">Bird</option>
+            <option value="fish">Fish</option>
+            <option value="human">Human (COCO-17)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="skel-grid">
+        <div class="skel-padwrap">
+          <canvas id="skel-pad" width="380" height="330"></canvas>
+          <p class="skel-hint">
+            Click empty space to add a keypoint · drag one to move it ·
+            click two in turn to connect or disconnect them
+          </p>
+          <label class="field">
+            <span class="field-label">Trace over</span>
+            <select id="skel-backdrop"></select>
+          </label>
+        </div>
+
+        <div class="skel-side">
+          <div class="skel-sidehead">
+            <span>Keypoints</span>
+            <span class="skel-order" title="This order is the export order">order = export index</span>
+          </div>
+          <div class="skel-list" id="skel-list"></div>
+          <p class="skel-lock" id="skel-lock" hidden></p>
+        </div>
+      </div>
+
+      <div class="skel-tools">
+        <button type="button" class="btn" id="skel-import"><span data-icon="upload"></span> Import JSON</button>
+        <button type="button" class="btn" id="skel-export"><span data-icon="download"></span> Export JSON</button>
+        <button type="button" class="btn" id="skel-autopair"><span data-icon="rotate"></span> Auto-pair L/R</button>
+        <button type="button" class="btn" id="skel-clear">Clear</button>
+        <span class="spacer"></span>
+        <span class="skel-summary" id="skel-summary"></span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="skel-save">Save skeleton</button>
+    </div>
+  </div>
+
   <!-- keyboard shortcuts -->
   <div class="modal wide" id="modal-help" hidden>
     <div class="modal-head">
@@ -225,6 +317,31 @@
         <p class="note">Handles appear on their own as soon as the cursor comes near a
         marker's edge — there is nothing to click first, and a marker can never be
         dragged around by its middle.</p>
+      </section>
+
+      <section>
+        <h4>Polygons</h4>
+        <dl>
+          <dt>Click</dt><dd>Place the next vertex</dd>
+          <dt>Click the first vertex</dt><dd>Close the shape — <kbd>Enter</kbd> or a double-click do the same</dd>
+          <dt><kbd>Backspace</kbd></dt><dd>Take back the last vertex</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Throw the whole polygon away</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h4>Poses</h4>
+        <dl>
+          <dt>Drag a box</dt><dd>The type's skeleton drops in pre-posed, ready to adjust</dd>
+          <dt>Drag a keypoint</dt><dd>Move it — this also marks it as confirmed</dd>
+          <dt><kbd>Alt</kbd> + click a keypoint</dt><dd>Cycle visible → occluded → absent</dd>
+          <dt>Drag a box corner</dt><dd>Resize the box; the keypoints stay where they are</dd>
+        </dl>
+        <p class="note">Keypoints you have not touched yet are drawn hollow and faded, so a
+        template that was dropped in and never adjusted can't be mistaken for finished work.
+        Define the skeleton itself in the marker type's <em>Skeleton</em> editor, which also
+        imports and exports blueprints as JSON — hand the same file to everyone so a group's
+        annotations stay compatible.</p>
       </section>
 
       <section>
@@ -271,7 +388,9 @@
 </div>
 
 <script src="js/icons.js"></script>
+<script src="js/zip.js"></script>
 <script src="js/core.js"></script>
+<script src="js/skeleton.js"></script>
 <script src="js/canvas.js"></script>
 <script src="js/ui.js"></script>
 </body>
