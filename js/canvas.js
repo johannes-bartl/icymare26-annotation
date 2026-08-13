@@ -29,6 +29,7 @@
   var HANDLE_R = 4.5;          // screen px, half-size of a resize handle
   var HIT_TOL = 7;             // screen px slack for hit-testing thin shapes
   var EDGE_TOL = 11;           // screen px — how close counts as "near an edge"
+  var REACH_PAD = 34;          // screen px past the bounding box that stays armed
   var POINT_R = 11;            // screen px grab radius around a point marker
   var ROT_OFFSET = 26;         // screen px above the shape for the rotation grip
   var MIN_SIZE = 3;            // image px, smallest marker we will keep
@@ -451,6 +452,26 @@
     return (l.x * l.x) / (ex * ex) + (l.y * l.y) / (ey * ey) <= 1.06;
   }
 
+  /**
+   * Which marker should reveal its handles, topmost first. A handle position
+   * counts even when that marker is not armed yet, so a grip can be picked up
+   * by going straight to where it sits rather than by tracing the outline
+   * first — an ellipse's corners are nowhere near its curve.
+   */
+  function armCandidate(p, ip) {
+    var list = App.activeMarkers(), tol = EDGE_TOL / view.scale, i;
+    for (i = list.length - 1; i >= 0; i--) if (handleAt(list[i], p.x, p.y)) return list[i];
+    for (i = list.length - 1; i >= 0; i--) if (nearOutline(list[i], ip.x, ip.y, tol)) return list[i];
+    return null;
+  }
+
+  /** Cursor still close enough to an armed marker to be reaching for a handle. */
+  function withinReach(m, ip) {
+    var b = App.bboxOf(m), pad = REACH_PAD / view.scale;
+    return ip.x >= b.x1 - pad && ip.x <= b.x2 + pad &&
+           ip.y >= b.y1 - pad && ip.y <= b.y2 + pad;
+  }
+
   function topmost(ix, iy, test, tol) {
     var list = App.activeMarkers(), i;
     for (i = list.length - 1; i >= 0; i--) if (test(list[i], ix, iy, tol)) return list[i];
@@ -571,13 +592,19 @@
       hoverHandle = null;
     } else {
       hoverBodyId = null;
-      m = topmost(ip.x, ip.y, nearOutline, EDGE_TOL / view.scale);
-      /* stay armed while the cursor sits on a handle of the same marker — the
-         rotation grip in particular floats well clear of the outline */
-      if (!m && prevEdge) {
-        var prev = App.getMarker(prevEdge);
-        if (prev && handleAt(prev, p.x, p.y)) m = prev;
-      }
+      var prev = prevEdge ? App.getMarker(prevEdge) : null;
+
+      /* Handles do not sit on the outline: an ellipse's corner grips are out at
+         the bounding-box corners, up to 0.41 r away from the curve, and the
+         rotation grip floats clear of the shape entirely. Arming on outline
+         proximity alone therefore drops the marker — and hides the handle —
+         while the cursor is still travelling towards it. So once a marker is
+         armed it stays armed until the cursor leaves its bounding box by a
+         margin wide enough to contain every one of its handles. */
+      if (prev && handleAt(prev, p.x, p.y)) m = prev;
+      if (!m) m = armCandidate(p, ip);
+      if (!m && prev && withinReach(prev, ip)) m = prev;
+
       hoverEdgeId = m ? m.id : null;
       hoverHandle = armedHandleAt(p.x, p.y);
     }
@@ -717,5 +744,8 @@
     if (window.UI) window.UI.refresh();
     Canvas.render();
   }
+
+  /** Marker whose handles are currently showing, if any. */
+  Canvas.armedId = function () { return hoverEdgeId; };
 
 })();
