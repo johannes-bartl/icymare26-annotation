@@ -634,7 +634,7 @@
                   '<option value="L"' + (k.side === 'L' ? ' selected' : '') + '>L</option>' +
                   '<option value="R"' + (k.side === 'R' ? ' selected' : '') + '>R</option>' +
                 '</select>' +
-                (partner === undefined ? '<span class="kp-flip empty"></span>'
+                (partner === undefined ? '<span class="kp-flip kp-flip-none"></span>'
                   : '<span class="kp-flip" title="Mirrors ' + esc(work.keypoints[partner].name) +
                     '">↔' + partner + '</span>') +
                 (locked ? '' :

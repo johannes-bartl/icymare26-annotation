@@ -313,17 +313,19 @@ svg { display: block; }
 .hint .chip-dot { width: 9px; height: 9px; border-radius: 50%; }
 .hint svg { color: var(--muted); }
 
-.empty {
+/* Scoped to the id: a bare `.empty` selector is far too generic to own
+   `position: absolute; inset: 0` in a global stylesheet. */
+#empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
 }
-.empty[hidden] { display: none; }
+#empty[hidden] { display: none; }
 .empty-inner { max-width: 380px; }
 .empty-icon { display: flex; justify-content: center; color: #2e3a4b; margin-bottom: 6px; }
 .empty-icon svg { width: 56px; height: 56px; stroke-width: 1.2; }
-.empty h3 { margin: 6px 0 4px; font-size: 16px; font-weight: 600; }
-.empty p { margin: 0 0 16px; color: var(--dim); }
+#empty h3 { margin: 6px 0 4px; font-size: 16px; font-weight: 600; }
+#empty p { margin: 0 0 16px; color: var(--dim); }
 
 .dropzone {
   position: absolute; inset: 10px;
@@ -582,7 +584,10 @@ select:focus { border-color: var(--accent); }
   background: rgba(76,154,255,.16); color: #9ccaff;
   font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
-.kp-flip.empty { background: none; }
+/* Spacer keeping the row columns aligned when a point has no mirror. Do NOT
+   call this modifier `empty` — that is the canvas drop-overlay's class, and it
+   would blanket the dialog in absolutely-positioned spans. */
+.kp-flip.kp-flip-none { background: none; }
 
 .iconbtn.micro { width: 19px; height: 22px; flex: none; border-radius: 4px; }
 .iconbtn.micro:disabled { opacity: .25; cursor: default; background: none; }
