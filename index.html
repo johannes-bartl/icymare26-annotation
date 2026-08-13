@@ -179,18 +179,6 @@
         </div>
       </div>
 
-      <div class="field" id="f-kind-wrap">
-        <span class="field-label">Region kind</span>
-        <div class="segrow" id="f-kind">
-          <button type="button" class="segopt" data-kind="thing">
-            Thing<small>Countable — each polygon is one object</small>
-          </button>
-          <button type="button" class="segopt" data-kind="stuff">
-            Stuff<small>Uncountable — water, sand, kelp</small>
-          </button>
-        </div>
-      </div>
-
       <div class="field" id="f-skel-wrap">
         <span class="field-label">Skeleton</span>
         <div class="skelrow">
@@ -247,7 +235,8 @@
         <label class="field">
           <span class="field-label">Start from</span>
           <select id="skel-preset">
-            <option value="">Preset…</option>
+            <option value="">Choose…</option>
+            <option value="empty">Empty — build from scratch</option>
             <option value="quadruped">Quadruped</option>
             <option value="pinniped">Pinniped</option>
             <option value="bird">Bird</option>
@@ -260,14 +249,7 @@
       <div class="skel-grid">
         <div class="skel-padwrap">
           <canvas id="skel-pad" width="380" height="330"></canvas>
-          <p class="skel-hint">
-            Click empty space to add a keypoint · drag one to move it ·
-            click two in turn to connect or disconnect them
-          </p>
-          <label class="field">
-            <span class="field-label">Trace over</span>
-            <select id="skel-backdrop"></select>
-          </label>
+          <p class="skel-hint" id="skel-status"></p>
         </div>
 
         <div class="skel-side">
@@ -283,11 +265,21 @@
       <div class="skel-tools">
         <button type="button" class="btn" id="skel-import"><span data-icon="upload"></span> Import JSON</button>
         <button type="button" class="btn" id="skel-export"><span data-icon="download"></span> Export JSON</button>
-        <button type="button" class="btn" id="skel-autopair"><span data-icon="rotate"></span> Auto-pair L/R</button>
-        <button type="button" class="btn" id="skel-clear">Clear</button>
+        <button type="button" class="btn" id="skel-autopair" title="Match up left_x / right_x keypoints by name">
+          <span data-icon="mirror"></span> Auto-pair L/R
+        </button>
         <span class="spacer"></span>
         <span class="skel-summary" id="skel-summary"></span>
       </div>
+
+      <p class="skel-note">
+        <b>Mirror pairs</b> record which keypoints swap when an image is flipped
+        horizontally — left flipper becomes right flipper. Training augments images
+        by flipping them, so without these pairs the model learns left and right
+        the wrong way round. <b>Auto-pair L/R</b> fills them in by matching
+        <code>left_…</code> and <code>right_…</code> names; the <span class="kp-flip">↔</span>
+        badge shows what each point is paired with.
+      </p>
     </div>
     <div class="modal-foot">
       <button class="btn" data-close>Cancel</button>
@@ -322,11 +314,16 @@
       <section>
         <h4>Polygons</h4>
         <dl>
-          <dt>Click</dt><dd>Place the next vertex</dd>
+          <dt>Click</dt><dd>Place the next vertex — good for corners</dd>
+          <dt>Drag</dt><dd>Trace a run of vertices along the cursor — good for curves. Mix freely with clicks.</dd>
           <dt>Click the first vertex</dt><dd>Close the shape — <kbd>Enter</kbd> or a double-click do the same</dd>
           <dt><kbd>Backspace</kbd></dt><dd>Take back the last vertex</dd>
           <dt><kbd>Esc</kbd></dt><dd>Throw the whole polygon away</dd>
+          <dt>Click the <b>+</b> on an edge</dt><dd>Insert a vertex there and drag it straight out</dd>
+          <dt><kbd>Alt</kbd> + click a vertex</dt><dd>Remove that vertex</dd>
         </dl>
+        <p class="note">On a traced polygon only the vertices near the cursor show their
+        handles, so the outline stays readable — all of them are still grabbable.</p>
       </section>
 
       <section>

@@ -130,6 +130,9 @@
     var tools = document.querySelectorAll('#toolgroup .tool');
     for (var i = 0; i < tools.length; i++) tools[i].classList.toggle('active', tools[i].dataset.tool === t);
     els.app.classList.toggle('deleting', t === 'delete');
+    if (t !== 'annotate') Canvas.cancelPending();
+    renderTypes();
+    updateChip();
     Canvas.updateCursor();
     Canvas.render();
   }
@@ -293,17 +296,18 @@
   }
 
   function renderTypes() {
-    var s = App.state, html = '', i, t, n;
+    /* Only the annotate tool places markers, so only then does a type being
+       "active" mean anything — highlighting one while selecting or deleting
+       just suggests it is about to be used. */
+    var s = App.state, drawing = s.tool === 'annotate', html = '', i, t, n;
     for (i = 0; i < s.types.length; i++) {
       t = s.types[i];
       n = App.countOfType(t.id);
-      html += '<div class="type-row' + (t.id === s.activeTypeId ? ' active' : '') + '" data-id="' + t.id + '">' +
+      html += '<div class="type-row' + (drawing && t.id === s.activeTypeId ? ' active' : '') + '" data-id="' + t.id + '">' +
                 '<span class="type-dot" style="background:' + t.color + '"></span>' +
                 '<span class="type-shape" title="' + App.SHAPE_LABEL[t.shape] +
                   (t.rotatable ? ' (rotatable)' : '') + '">' + window.svgIcon(t.shape, 16) + '</span>' +
                 '<span class="type-name" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
-                (t.shape === 'polygon' && t.kind === 'stuff'
-                  ? '<span class="type-kind" title="Stuff — uncountable region">stuff</span>' : '') +
                 (t.shape === 'pose' && t.skeleton
                   ? '<span class="type-kind" title="' + t.skeleton.keypoints.length + ' keypoints">' +
                     t.skeleton.keypoints.length + 'kp</span>' : '') +
@@ -332,7 +336,7 @@
 
   function updateChip() {
     var t = App.activeType();
-    if (!t) { els.chip.hidden = true; return; }
+    if (!t || App.state.tool !== 'annotate') { els.chip.hidden = true; return; }
     els.chip.hidden = false;
     els.chip.innerHTML = '<span class="chip-dot" style="background:' + t.color + '"></span>' +
       window.svgIcon(t.shape, 14) + '<span>' + esc(t.name) + '</span>' +
@@ -377,12 +381,12 @@
     draft = t
       ? {
           name: t.name, shape: t.shape, rotatable: !!t.rotatable, color: t.color,
-          hotkey: t.hotkey, kind: t.kind || 'thing',
+          hotkey: t.hotkey,
           skeleton: t.skeleton ? window.Skeleton.clone(t.skeleton) : null
         }
       : {
           name: '', shape: 'rect', rotatable: false, color: nextColor(),
-          hotkey: nextHotkey(), kind: 'thing', skeleton: null
+          hotkey: nextHotkey(), skeleton: null
         };
 
     $('modal-type-title').textContent = t ? 'Edit marker type' : 'New marker type';
@@ -424,16 +428,11 @@
   /** Show only the fields that mean anything for the chosen mode. */
   function syncShapeFields() {
     var canRotate = draft.shape === 'rect' || draft.shape === 'ellipse',
-        isPoly = draft.shape === 'polygon',
-        isPose = draft.shape === 'pose', i, opts;
+        isPose = draft.shape === 'pose';
 
     $('f-rotatable-wrap').hidden = !canRotate;
     if (!canRotate) draft.rotatable = false;
     $('f-rotatable').checked = draft.rotatable;
-
-    $('f-kind-wrap').hidden = !isPoly;
-    opts = document.querySelectorAll('#f-kind .segopt');
-    for (i = 0; i < opts.length; i++) opts[i].classList.toggle('active', opts[i].dataset.kind === draft.kind);
 
     $('f-skel-wrap').hidden = !isPose;
     if (isPose && !draft.skeleton) draft.skeleton = window.Skeleton.clone(window.Skeleton.PRESETS.quadruped);
@@ -501,13 +500,6 @@
     });
 
     $('f-rotatable').addEventListener('change', function () { draft.rotatable = this.checked; });
-
-    $('f-kind').addEventListener('click', function (e) {
-      var b = e.target.closest('.segopt');
-      if (!b) return;
-      draft.kind = b.dataset.kind;
-      syncShapeFields();
-    });
 
     $('f-skel-edit').addEventListener('click', function () {
       var used = editingTypeId ? App.countOfType(editingTypeId) : 0;
@@ -583,7 +575,6 @@
       t.rotatable = !!draft.rotatable;
       t.color = draft.color;
       t.hotkey = draft.hotkey;
-      t.kind = draft.kind;
       t.skeleton = draft.skeleton;
       if (t.shape !== draft.shape && App.countOfType(t.id) === 0) t.shape = draft.shape;
       else if (t.shape !== draft.shape) UI.toast('Mode kept — markers of this type already exist');
@@ -592,7 +583,7 @@
       var nt = {
         id: App.uid('t'), name: name, shape: draft.shape,
         rotatable: !!draft.rotatable, color: draft.color, hotkey: draft.hotkey,
-        kind: draft.kind, skeleton: draft.skeleton
+        skeleton: draft.skeleton
       };
       App.state.types.push(nt);
       App.state.activeTypeId = nt.id;
@@ -655,7 +646,16 @@
       }
 
       if (modalOpen()) {
-        if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          /* inside the skeleton editor, Escape drops the selected keypoint
+             first and only cancels the dialog on a second press */
+          if (!$('modal-skeleton').hidden) {
+            if (!window.Skeleton.handleEscape()) window.Skeleton.cancel();
+            return;
+          }
+          closeModal();
+        }
         return;
       }
       if (isTyping(e.target)) return;

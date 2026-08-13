@@ -85,6 +85,9 @@
       flip: [[1, 2]]
     },
 
+    /* The COCO-17 spec exactly: seventeen points and nineteen bones. There is
+       deliberately no neck — COCO does not define one. Add one with the editor
+       if your model expects it. */
     human: {
       name: 'Human (COCO-17)',
       keypoints: [
@@ -98,7 +101,8 @@
         kp('left_ankle', 'L', 0.41, 0.96), kp('right_ankle', 'R', 0.59, 0.96)
       ],
       edges: [[15, 13], [13, 11], [16, 14], [14, 12], [11, 12], [5, 11], [6, 12], [5, 6],
-              [5, 7], [6, 8], [7, 9], [8, 10], [0, 1], [0, 2], [1, 3], [2, 4]],
+              [5, 7], [6, 8], [7, 9], [8, 10], [1, 2], [0, 1], [0, 2], [1, 3], [2, 4],
+              [3, 5], [4, 6]],
       flip: [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16]]
     }
   };
@@ -169,7 +173,11 @@
     return out;
   }
 
-  /** Pair up left_x / right_x by name, so mirrored training images stay honest. */
+  /**
+   * Pair up left_x / right_x by name. A mirror pair is what YOLO's `flip_idx`
+   * is built from: when training flips an image horizontally, the left flipper
+   * has to become the right one, or the model learns nonsense.
+   */
   function derivePairs(kps) {
     var byBase = {}, out = [], i, n, base, side;
     for (i = 0; i < kps.length; i++) {
@@ -179,9 +187,10 @@
       else if (/^right[_-]/.test(n)) { side = 'R'; base = n.replace(/^right[_-]/, ''); }
       else if (/[_-]left$/.test(n)) { side = 'L'; base = n.replace(/[_-]left$/, ''); }
       else if (/[_-]right$/.test(n)) { side = 'R'; base = n.replace(/[_-]right$/, ''); }
+      else if (kps[i].side === 'L' || kps[i].side === 'R') { side = kps[i].side; base = n; }
       else continue;
       if (!byBase[base]) byBase[base] = {};
-      byBase[base][side] = i;
+      if (byBase[base][side] === undefined) byBase[base][side] = i;
     }
     for (base in byBase) {
       if (byBase[base].L !== undefined && byBase[base].R !== undefined) {
@@ -220,10 +229,11 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var work = null, onDone = null, locked = false;
-  var selIdx = -1, dragIdx = -1, dragMoved = false, backdrop = null;
+  var selIdx = -1, dragIdx = -1, dragMoved = false, padCursor = null;
   var pad, pctx, wired = false;
 
   var PAD_INSET = 26;
+  var GRAB_R = 11;
 
   /**
    * @param {object}   sk       blueprint to edit (cloned internally)
@@ -234,7 +244,7 @@
     work = Skeleton.clone(sk && sk.keypoints ? sk : Skeleton.blank());
     onDone = done;
     locked = !!(opts && opts.locked);
-    selIdx = -1; dragIdx = -1; backdrop = null;
+    selIdx = -1; dragIdx = -1; padCursor = null;
 
     pad = $('skel-pad');
     pctx = pad.getContext('2d');
@@ -244,37 +254,44 @@
     $('skel-lock').hidden = !locked;
     $('skel-lock').textContent = (opts && opts.lockReason) || '';
     $('skel-preset').value = '';
-    fillBackdrops();
     render();
     window.UI.openModalStacked('modal-skeleton');
+  };
+
+  /** Escape inside the editor: drop the selection first, only then cancel. */
+  Skeleton.handleEscape = function () {
+    if (selIdx !== -1) { selIdx = -1; render(); return true; }
+    return false;
+  };
+
+  Skeleton.cancel = function () {
+    var cb = onDone;
+    onDone = null;
+    window.UI.closeModalStacked();
+    if (cb) cb(null);
   };
 
   function wire() {
     $('skel-name').addEventListener('input', function () { work.name = this.value; });
 
     $('skel-preset').addEventListener('change', function () {
-      var p = Skeleton.PRESETS[this.value];
-      if (!p) return;
-      if (locked) { window.UI.toast('Points are locked — this type already has poses'); this.value = ''; return; }
-      work = Skeleton.clone(p);
+      var key = this.value;
+      this.value = '';                       // always re-armed, so the same pick works twice
+      if (!key) return;
+      if (locked) { window.UI.toast('Points are locked — this type already has poses'); return; }
+      work = (key === 'empty') ? Skeleton.blank() : Skeleton.clone(Skeleton.PRESETS[key]);
       $('skel-name').value = work.name;
       selIdx = -1;
       render();
-    });
-
-    $('skel-backdrop').addEventListener('change', function () {
-      var img = null, list = window.App.state.images, i;
-      for (i = 0; i < list.length; i++) if (list[i].id === this.value) img = list[i];
-      if (!img) { backdrop = null; render(); return; }
-      var el = new Image();
-      el.onload = function () { backdrop = el; render(); };
-      el.src = img.url;
+      window.UI.toast(key === 'empty' ? 'Started from scratch' : 'Loaded “' + work.name + '”');
     });
 
     $('skel-autopair').addEventListener('click', function () {
       Skeleton.autoPair(work);
       render();
-      window.UI.toast(work.flip.length + ' mirror pair' + (work.flip.length === 1 ? '' : 's') + ' found');
+      window.UI.toast(work.flip.length
+        ? work.flip.length + ' mirror pair' + (work.flip.length === 1 ? '' : 's') + ' matched by name'
+        : 'No left_/right_ name pairs found');
     });
 
     $('skel-export').addEventListener('click', function () {
@@ -297,7 +314,8 @@
         try { parsed = Skeleton.validate(JSON.parse(r.result)); }
         catch (err) { window.UI.toast('Could not read that skeleton: ' + err.message); return; }
         if (locked && parsed.keypoints.length !== work.keypoints.length) {
-          window.UI.toast('That skeleton has ' + parsed.keypoints.length + ' points, this type is locked to ' + work.keypoints.length);
+          window.UI.toast('That skeleton has ' + parsed.keypoints.length +
+                          ' points, this type is locked to ' + work.keypoints.length);
           return;
         }
         work = parsed;
@@ -309,13 +327,6 @@
       r.readAsText(f);
     });
 
-    $('skel-clear').addEventListener('click', function () {
-      if (locked) { window.UI.toast('Points are locked — this type already has poses'); return; }
-      work.keypoints = []; work.edges = []; work.flip = [];
-      selIdx = -1;
-      render();
-    });
-
     $('skel-save').addEventListener('click', function () {
       if (!work.keypoints.length) { window.UI.toast('Add at least one keypoint'); return; }
       work.name = ($('skel-name').value || 'Skeleton').trim();
@@ -325,15 +336,11 @@
     });
 
     $('modal-skeleton').addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) {
-        var cb = onDone; onDone = null;
-        window.UI.closeModalStacked();
-        if (cb) cb(null);
-      }
+      if (e.target.closest('[data-close]')) Skeleton.cancel();
     });
 
     /* Never re-render the list from its own input events — rebuilding the rows
-       would tear out the <input> the user is typing into. */
+       would tear out the control the user is interacting with. */
     $('skel-list').addEventListener('input', function (e) {
       var row = e.target.closest('[data-i]');
       if (!row || !e.target.classList.contains('kp-name')) return;
@@ -350,10 +357,21 @@
     });
 
     $('skel-list').addEventListener('click', function (e) {
+      /* A click that lands on the name field or the side dropdown belongs to
+         that control. Selecting the row here would re-render the list and rip
+         the field out from under the pointer. */
+      if (e.target.closest('input, select')) return;
+
       var row = e.target.closest('[data-i]');
       if (!row) return;
-      var i = +row.dataset.i;
-      if (e.target.closest('[data-act="del"]')) { removePoint(i); return; }
+      var i = +row.dataset.i, act = e.target.closest('[data-act]');
+
+      if (act) {
+        if (act.dataset.act === 'del') removePoint(i);
+        else if (act.dataset.act === 'up') movePoint(i, -1);
+        else if (act.dataset.act === 'down') movePoint(i, 1);
+        return;
+      }
       selIdx = (selIdx === i) ? -1 : i;
       render();
     });
@@ -361,16 +379,8 @@
     pad.addEventListener('pointerdown', onPadDown);
     pad.addEventListener('pointermove', onPadMove);
     pad.addEventListener('pointerup', onPadUp);
+    pad.addEventListener('pointerleave', function () { padCursor = null; drawPad(); });
     pad.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-  }
-
-  function fillBackdrops() {
-    var list = window.App.state.images,
-        html = '<option value="">No backdrop</option>', i;
-    for (i = 0; i < list.length; i++) {
-      html += '<option value="' + list[i].id + '">' + esc(list[i].name) + '</option>';
-    }
-    $('skel-backdrop').innerHTML = html;
   }
 
   /* -------------------------------------------------------------- pad math */
@@ -391,7 +401,7 @@
     var i, p;
     for (i = work.keypoints.length - 1; i >= 0; i--) {
       p = toPad(work.keypoints[i]);
-      if (Math.hypot(x - p.x, y - p.y) <= 11) return i;
+      if (Math.hypot(x - p.x, y - p.y) <= GRAB_R) return i;
     }
     return -1;
   }
@@ -399,6 +409,7 @@
   /* ---------------------------------------------------------- pad handlers */
 
   function onPadDown(e) {
+    if (e.button !== 0) return;               // only the left button places points
     try { pad.setPointerCapture(e.pointerId); } catch (err) { /* synthetic */ }
     var p = padPos(e);
     dragIdx = pointAt(p.x, p.y);
@@ -406,15 +417,19 @@
   }
 
   function onPadMove(e) {
-    if (dragIdx === -1) return;
-    var p = padPos(e), t = fromPad(p.x, p.y), k = work.keypoints[dragIdx];
+    var p = padPos(e);
+    padCursor = p;
+
+    if (dragIdx === -1) { drawPad(); return; }
+    var t = fromPad(p.x, p.y), k = work.keypoints[dragIdx];
     if (Math.abs(t.tx - k.tx) > 0.004 || Math.abs(t.ty - k.ty) > 0.004) dragMoved = true;
     if (!dragMoved) return;
     k.tx = t.tx; k.ty = t.ty;
-    render();
+    drawPad();
   }
 
   function onPadUp(e) {
+    if (e.button !== 0) return;
     var p = padPos(e), hit = dragIdx, moved = dragMoved;
     dragIdx = -1; dragMoved = false;
     if (moved) return;
@@ -422,8 +437,8 @@
     if (hit === -1) { addPoint(p); return; }
 
     /* click a point, then click another, to toggle the bone between them */
-    if (selIdx === -1 || selIdx === hit) { selIdx = (selIdx === hit) ? -1 : hit; }
-    else { toggleEdge(selIdx, hit); selIdx = -1; }
+    if (selIdx === -1 || selIdx === hit) selIdx = (selIdx === hit) ? -1 : hit;
+    else { toggleEdge(selIdx, hit); selIdx = hit; }
     render();
   }
 
@@ -432,7 +447,7 @@
     var t = fromPad(p.x, p.y), n = work.keypoints.length + 1, name = 'point_' + n;
     while (nameTaken(name)) { n += 1; name = 'point_' + n; }
     work.keypoints.push({ name: name, side: 'C', tx: t.tx, ty: t.ty });
-    /* chain onto whatever was selected, so drawing a limb is one click each */
+    /* chain onto whatever was selected, so drawing a limb is one click a joint */
     if (selIdx !== -1) toggleEdge(selIdx, work.keypoints.length - 1);
     selIdx = work.keypoints.length - 1;
     render();
@@ -449,6 +464,27 @@
     work.edges = reindex(work.edges, i);
     work.flip = reindex(work.flip, i);
     if (selIdx === i) selIdx = -1; else if (selIdx > i) selIdx -= 1;
+    render();
+  }
+
+  /** Move a keypoint up or down the order, carrying its bones and pairing. */
+  function movePoint(i, dir) {
+    if (locked) { window.UI.toast('Order is locked — this type already has poses'); return; }
+    var j = i + dir, tmp;
+    if (j < 0 || j >= work.keypoints.length) return;
+
+    tmp = work.keypoints[i];
+    work.keypoints[i] = work.keypoints[j];
+    work.keypoints[j] = tmp;
+
+    function swap(v) { return v === i ? j : (v === j ? i : v); }
+    function remap(pairs) {
+      return pairs.map(function (p) { return [swap(p[0]), swap(p[1])]; });
+    }
+    work.edges = remap(work.edges);
+    work.flip = remap(work.flip);
+
+    if (selIdx === i) selIdx = j; else if (selIdx === j) selIdx = i;
     render();
   }
 
@@ -474,6 +510,16 @@
     work.edges.push([a, b]);
   }
 
+  /** index -> the index it mirrors, for the ↔ badges. */
+  function flipMap() {
+    var m = {}, i;
+    for (i = 0; i < work.flip.length; i++) {
+      m[work.flip[i][0]] = work.flip[i][1];
+      m[work.flip[i][1]] = work.flip[i][0];
+    }
+    return m;
+  }
+
   /* -------------------------------------------------------------- painting */
 
   function render() {
@@ -485,25 +531,27 @@
   function drawSummary() {
     $('skel-summary').textContent = Skeleton.summary(work) + ' · ' +
       work.flip.length + ' mirror pair' + (work.flip.length === 1 ? '' : 's');
+
+    var el = $('skel-status');
+    if (selIdx !== -1 && work.keypoints[selIdx]) {
+      el.innerHTML = '<b>' + esc(work.keypoints[selIdx].name) + '</b> selected — ' +
+        'click another point to connect or disconnect it, click empty space to add a ' +
+        'point joined to it, or press Esc to deselect';
+      el.classList.add('on');
+    } else {
+      el.textContent = 'Click empty space to add a keypoint · drag one to move it · ' +
+        'click a point, then another, to connect or disconnect them';
+      el.classList.remove('on');
+    }
   }
 
   function drawPad() {
-    var w = pad.width, h = pad.height, i, e, a, b, p, k;
+    var w = pad.width, h = pad.height, i, e, a, b, p, k, sel;
     pctx.clearRect(0, 0, w, h);
 
     pctx.fillStyle = '#0b1017';
     pctx.fillRect(0, 0, w, h);
 
-    if (backdrop) {
-      var r = padRect(),
-          s = Math.min(r.w / backdrop.naturalWidth, r.h / backdrop.naturalHeight),
-          dw = backdrop.naturalWidth * s, dh = backdrop.naturalHeight * s;
-      pctx.globalAlpha = 0.45;
-      pctx.drawImage(backdrop, r.x + (r.w - dw) / 2, r.y + (r.h - dh) / 2, dw, dh);
-      pctx.globalAlpha = 1;
-    }
-
-    /* template frame */
     var fr = padRect();
     pctx.strokeStyle = 'rgba(255,255,255,.12)';
     pctx.setLineDash([4, 4]);
@@ -521,21 +569,47 @@
       pctx.beginPath(); pctx.moveTo(a.x, a.y); pctx.lineTo(b.x, b.y); pctx.stroke();
     }
 
+    /* what the next click would connect */
+    if (selIdx !== -1 && work.keypoints[selIdx] && padCursor && dragIdx === -1) {
+      sel = toPad(work.keypoints[selIdx]);
+      var over = pointAt(padCursor.x, padCursor.y),
+          joining = over !== -1 && over !== selIdx;
+      pctx.strokeStyle = joining ? 'rgba(76,154,255,.95)' : 'rgba(76,154,255,.4)';
+      pctx.lineWidth = joining ? 2.5 : 1.5;
+      pctx.setLineDash([5, 4]);
+      pctx.beginPath();
+      pctx.moveTo(sel.x, sel.y);
+      pctx.lineTo(padCursor.x, padCursor.y);
+      pctx.stroke();
+      pctx.setLineDash([]);
+    }
+
     /* points */
     for (i = 0; i < work.keypoints.length; i++) {
       k = work.keypoints[i];
       p = toPad(k);
+
+      if (i === selIdx) {                       // halo, so "active" is unmistakable
+        pctx.beginPath();
+        pctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+        pctx.fillStyle = 'rgba(76,154,255,.22)';
+        pctx.fill();
+        pctx.strokeStyle = '#4c9aff';
+        pctx.lineWidth = 2;
+        pctx.stroke();
+      }
+
       pctx.beginPath();
-      pctx.arc(p.x, p.y, i === selIdx ? 7.5 : 5.5, 0, Math.PI * 2);
+      pctx.arc(p.x, p.y, i === selIdx ? 6.5 : 5.5, 0, Math.PI * 2);
       pctx.fillStyle = k.side === 'L' ? '#ffd93d' : (k.side === 'R' ? '#4cc9f0' : '#ffffff');
       pctx.fill();
-      pctx.lineWidth = i === selIdx ? 2.5 : 1.5;
-      pctx.strokeStyle = i === selIdx ? '#4c9aff' : '#0b1017';
+      pctx.lineWidth = 1.5;
+      pctx.strokeStyle = '#0b1017';
       pctx.stroke();
 
-      pctx.fillStyle = 'rgba(230,237,243,.75)';
-      pctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
-      pctx.fillText(String(i), p.x + 8, p.y - 6);
+      pctx.fillStyle = i === selIdx ? '#9ccaff' : 'rgba(230,237,243,.7)';
+      pctx.font = (i === selIdx ? '700 ' : '600 ') + '10px ui-sans-serif, system-ui, sans-serif';
+      pctx.fillText(String(i), p.x + 9, p.y - 7);
     }
 
     if (!work.keypoints.length) {
@@ -548,19 +622,28 @@
   }
 
   function drawList() {
-    var html = '', i, k;
+    var html = '', fm = flipMap(), i, k, partner;
     for (i = 0; i < work.keypoints.length; i++) {
       k = work.keypoints[i];
+      partner = fm[i];
       html += '<div class="kp-row' + (i === selIdx ? ' active' : '') + '" data-i="' + i + '">' +
                 '<span class="kp-idx">' + i + '</span>' +
                 '<input class="kp-name" type="text" value="' + esc(k.name) + '" maxlength="40" spellcheck="false">' +
-                '<select class="kp-side" title="Side, used for mirror pairing">' +
+                '<select class="kp-side" title="Side — used when matching mirror pairs">' +
                   '<option value="C"' + (k.side === 'C' ? ' selected' : '') + '>–</option>' +
                   '<option value="L"' + (k.side === 'L' ? ' selected' : '') + '>L</option>' +
                   '<option value="R"' + (k.side === 'R' ? ' selected' : '') + '>R</option>' +
                 '</select>' +
-                (locked ? '' : '<button class="iconbtn tiny danger" data-act="del" title="Remove">' +
-                  window.svgIcon('trash', 13) + '</button>') +
+                (partner === undefined ? '<span class="kp-flip empty"></span>'
+                  : '<span class="kp-flip" title="Mirrors ' + esc(work.keypoints[partner].name) +
+                    '">↔' + partner + '</span>') +
+                (locked ? '' :
+                  '<button class="iconbtn micro" data-act="up" title="Move up"' +
+                    (i === 0 ? ' disabled' : '') + '>' + window.svgIcon('chevup', 12) + '</button>' +
+                  '<button class="iconbtn micro" data-act="down" title="Move down"' +
+                    (i === work.keypoints.length - 1 ? ' disabled' : '') + '>' + window.svgIcon('chevdown', 12) + '</button>' +
+                  '<button class="iconbtn micro danger" data-act="del" title="Remove">' +
+                    window.svgIcon('trash', 12) + '</button>') +
               '</div>';
     }
     $('skel-list').innerHTML = html ||

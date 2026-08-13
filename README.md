@@ -65,15 +65,21 @@ tells you how many.
 
 ### Polygons
 
-Click out the vertices and close the ring by clicking the first vertex again (`Enter` and
-double-click also close it, `Backspace` removes the last vertex, `Esc` abandons the shape).
-Afterwards every vertex is a handle you can drag.
+**Click** to place a vertex, or **drag** to trace a whole run of them along the cursor —
+clicks for corners, drags for curves, mixed freely in one shape. Close the ring by clicking
+the first vertex again (`Enter` and double-click also close it, `Backspace` removes the last
+vertex, `Esc` abandons the shape).
 
-Polygon types are either **things** or **stuff** — the COCO distinction. A *thing* is
-countable, so each polygon is one object and you get instance segmentation. *Stuff* is
-uncountable — water, sand, kelp — and collapses to one region per class, which is what
-semantic segmentation wants. The choice only affects how the export is read; both are
-annotated identically.
+Afterwards:
+
+- drag any vertex to move it
+- hover an edge and click the **+** that appears to insert a vertex there, dragging it
+  straight out to where you want it
+- `Alt`+click a vertex to remove it (a polygon keeps a minimum of three)
+
+A traced polygon can carry dozens of vertices spaced about a handle-width apart, so only the
+handles near the cursor are drawn — otherwise the outline disappears under its own dots. Every
+vertex stays grabbable regardless.
 
 ### Poses
 
@@ -89,14 +95,31 @@ skeleton drops in pre-posed, so you adjust points rather than placing them from 
 
 #### Skeleton blueprints
 
-Open the **Skeleton** editor from the marker type. On the pad: click empty space to add a
-keypoint, drag one to move it, and click two in turn to connect or disconnect them. Each new
-point chains onto the selected one, so drawing a limb is one click per joint. You can trace
-over one of your own loaded images, and start from a preset (quadruped, pinniped, bird, fish,
-or COCO-17 human).
+Open the **Skeleton** editor from the marker type. On the pad:
 
-Where you place the points *is* the template pose, so it is worth arranging them roughly like
-a real animal.
+- **click empty space** to add a keypoint
+- **drag a point** to move it
+- **click one point, then another** to connect or disconnect them
+
+The selected point gets a blue halo and a dashed line follows the cursor, showing exactly what
+the next click would join. Each new point chains onto the selected one, so drawing a limb is
+one click per joint. `Esc` deselects.
+
+**Start from** loads a preset — *Empty* to build from scratch, or quadruped, pinniped, bird,
+fish, or COCO-17 human. Where you place the points *is* the template pose, so it is worth
+arranging them roughly like a real animal.
+
+In the list beside the pad you can rename each point, set its side, and **move it up or down
+the order** with the arrows — bones and mirror pairs follow the point, so reordering never
+rewires the skeleton.
+
+**Mirror pairs** (the `↔` badges) record which keypoints swap when an image is flipped
+horizontally. Training augments images by flipping them, so without these the model learns
+left and right the wrong way round. **Auto-pair L/R** fills them in by matching `left_…` and
+`right_…` names; they are exported as YOLO's `flip_idx`.
+
+> The COCO-17 preset is the spec exactly: seventeen points and nineteen bones, with **no
+> neck** — COCO does not define one. Add one with the editor if your model expects it.
 
 **Import and export the blueprint as JSON.** In a workshop this matters more than it sounds:
 if everyone defines their own skeleton you get mutually incompatible datasets. Hand out one
@@ -154,7 +177,6 @@ of columns, and this shape pivots in one line of pandas.
 | --- | --- |
 | `image_name`, `image_width`, `image_height` | the source image |
 | `class_name` | the marker type's name |
-| `kind` | `thing` or `stuff` |
 | `instance_id` | 1-based, restarting on each image |
 | `n_vertices`, `area_px` | repeated on every row of the polygon, for convenience |
 | `vertex_index` | 0-based, in drawing order |

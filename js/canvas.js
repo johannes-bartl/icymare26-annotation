@@ -37,6 +37,8 @@
   var imgCache = {};           // imageId -> HTMLImageElement
 
   var CLOSE_TOL = 10;          // screen px around the first vertex that closes a polygon
+  var TRACE_STEP = 9;          // screen px between points when tracing a polygon by dragging
+  var MIN_POLY_PTS = 3;
 
   /* interaction state */
   var drag = null;             // {mode, ...}
@@ -44,8 +46,13 @@
   var hoverEdgeId = null;      // marker whose handles are currently revealed
   var hoverBodyId = null;      // marker under the cursor (delete / select tool)
   var hoverHandle = null;
+  var hoverInsert = null;      // {marker, index, x, y} — where a new vertex would go
   var spaceDown = false;
   var rafPending = false;
+  var lastPointer = null;      // screen coords, for thinning out dense handles
+
+  var DENSE_VERTS = 12;        // above this, a polygon only shows handles near the cursor
+  var DENSE_RADIUS = 70;       // screen px
 
   /* ------------------------------------------------------------------ init */
 
@@ -239,6 +246,7 @@
     /* in-progress shape */
     if (drag && drag.mode === 'create' && drag.preview) drawMarker(drag.preview, false, true);
     if (pending) drawPending();
+    if (hoverInsert && !drag) drawInsertGhost();
 
     /* rubber band */
     if (drag && drag.mode === 'band') {
@@ -383,6 +391,26 @@
     }
   }
 
+  /** Hollow "+" sitting on the edge, marking where a click adds a vertex. */
+  function drawInsertGhost() {
+    var t = App.getType(hoverInsert.marker.typeId),
+        color = t ? t.color : '#c3ccd8',
+        x = hoverInsert.x, y = hoverInsert.y;
+    ctx.beginPath();
+    ctx.arc(x, y, HANDLE_R + 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(14,17,22,.85)';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 3, y); ctx.lineTo(x + 3, y);
+    ctx.moveTo(x, y - 3); ctx.lineTo(x, y + 3);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+
   function hexA(hex, alpha) {
     var h = hex.replace('#', ''), r, g, b;
     if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
@@ -472,9 +500,15 @@
   }
 
   function drawHandles(m) {
-    var hs = handlesOf(m), i, h;
+    var hs = handlesOf(m), i, h,
+        /* A traced polygon can carry dozens of vertices spaced a handle-width
+           apart; drawing them all hides the outline under its own dots. Show
+           only the ones in reach of the cursor — every handle stays grabbable. */
+        thin = m.shape === 'polygon' && m.pts.length > DENSE_VERTS && lastPointer;
+
     for (i = 0; i < hs.length; i++) {
       h = hs[i];
+      if (thin && Math.hypot(h.x - lastPointer.x, h.y - lastPointer.y) > DENSE_RADIUS) continue;
       /* a pose keypoint is already drawn by the skeleton — a white blob on top
          of it would only hide the visibility state */
       if (h.kp) continue;
@@ -700,8 +734,13 @@
     }
     if (e.button !== 0) return;
 
-    /* a polygon in progress owns every click until it is closed or cancelled */
-    if (pending) { addPendingVertex(p, ip); return; }
+    /* a polygon in progress owns every click until it is closed or cancelled.
+       addPendingVertex may close the shape, which clears `pending`. */
+    if (pending) {
+      addPendingVertex(p, ip);
+      if (pending) pending.tracing = true;
+      return;
+    }
 
     /* delete mode: whatever is highlighted goes */
     if (isDeleteMode()) {
@@ -726,10 +765,34 @@
         refresh();
         return;
       }
+      /* Alt on a polygon vertex removes it */
+      if (e.altKey && h.id.charAt(0) === 'v' && h.marker.shape === 'polygon') {
+        if (h.marker.pts.length <= MIN_POLY_PTS) {
+          window.UI && window.UI.toast('A polygon needs at least ' + MIN_POLY_PTS + ' points');
+          return;
+        }
+        App.pushUndo();
+        h.marker.pts.splice(+h.id.slice(1), 1);
+        hoverHandle = null;
+        refresh();
+        return;
+      }
       App.pushUndo();
       drag = h.id === 'rot'
         ? { mode: 'rotate', m: h.marker }
         : { mode: 'resize', m: h.marker, handle: h.id, orig: JSON.parse(JSON.stringify(h.marker)) };
+      return;
+    }
+
+    /* the ghost handle on a polygon edge: drop a vertex in and start dragging it */
+    if (hoverInsert) {
+      App.pushUndo();
+      var mk = hoverInsert.marker, at = hoverInsert.index + 1;
+      mk.pts.splice(at, 0, [hoverInsert.ix, hoverInsert.iy]);
+      hoverInsert = null;
+      hoverEdgeId = mk.id;
+      drag = { mode: 'resize', m: mk, handle: 'v' + at, orig: JSON.parse(JSON.stringify(mk)) };
+      refresh();
       return;
     }
 
@@ -754,8 +817,11 @@
     App.state.selection = [];
 
     if (type.shape === 'polygon') {
-      pending = { type: type, pts: [[ip.x, ip.y]], cursor: { x: ip.x, y: ip.y } };
+      /* `tracing` from the very first press, so the opening stroke can be a
+         drag rather than only a click */
+      pending = { type: type, pts: [[ip.x, ip.y]], cursor: { x: ip.x, y: ip.y }, tracing: true };
       hoverEdgeId = null;
+      hoverInsert = null;
       refresh();
       return;
     }
@@ -812,6 +878,7 @@
 
   function onPointerMove(e) {
     var p = evPos(e), ip = toImage(p.x, p.y), img = App.activeImage();
+    lastPointer = p;
 
     if (window.UI) {
       window.UI.setCursorReadout(ip, img);
@@ -820,8 +887,19 @@
 
     if (pending) {
       pending.cursor = ip;
+      /* holding the button down traces a run of vertices along the drag —
+         click for a corner, drag for a curve */
+      if (pending.tracing && (e.buttons & 1)) {
+        var last = pending.pts[pending.pts.length - 1],
+            ls = toScreen(last[0], last[1]);
+        if (Math.hypot(p.x - ls.x, p.y - ls.y) >= TRACE_STEP) {
+          pending.pts.push([ip.x, ip.y]);
+          pending.traced = true;
+          if (window.UI) window.UI.updateStatus();
+        }
+      }
       var f = toScreen(pending.pts[0][0], pending.pts[0][1]);
-      canvas.style.cursor = (pending.pts.length >= 3 && Math.hypot(p.x - f.x, p.y - f.y) <= CLOSE_TOL)
+      canvas.style.cursor = (pending.pts.length >= MIN_POLY_PTS && Math.hypot(p.x - f.x, p.y - f.y) <= CLOSE_TOL)
         ? 'pointer' : 'crosshair';
       Canvas.render();
       return;
@@ -884,12 +962,48 @@
       hoverHandle = armedHandleAt(p.x, p.y);
     }
 
+    var prevInsert = hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index);
+    hoverInsert = (!hoverHandle && !isDeleteMode()) ? insertPointAt(p, ip) : null;
+
     updateCursor();
     if (prevEdge !== hoverEdgeId || prevBody !== hoverBodyId ||
-        prevHandle !== (hoverHandle && hoverHandle.id)) Canvas.render();
+        prevHandle !== (hoverHandle && hoverHandle.id) ||
+        prevInsert !== (hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index)) ||
+        hoverInsert) Canvas.render();
+  }
+
+  /**
+   * Where a new vertex would land on an armed polygon: the closest point on the
+   * edge under the cursor. Shown as a ghost handle so it is discoverable rather
+   * than a hidden gesture.
+   */
+  function insertPointAt(p, ip) {
+    var m = hoverEdgeId ? App.getMarker(hoverEdgeId) : null;
+    if (!m || m.shape !== 'polygon') return null;
+    var tol = EDGE_TOL / view.scale, i, j, a, b, t, len2, px, py, d, best = null;
+    for (i = 0, j = m.pts.length - 1; i < m.pts.length; j = i++) {
+      a = m.pts[j]; b = m.pts[i];
+      len2 = (b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]);
+      if (!len2) continue;
+      t = App.clamp(((ip.x - a[0]) * (b[0] - a[0]) + (ip.y - a[1]) * (b[1] - a[1])) / len2, 0, 1);
+      px = a[0] + t * (b[0] - a[0]);
+      py = a[1] + t * (b[1] - a[1]);
+      d = Math.hypot(ip.x - px, ip.y - py);
+      if (d > tol) continue;
+      if (!best || d < best.d) best = { d: d, index: j, ix: px, iy: py };
+    }
+    if (!best) return null;
+    var s = toScreen(best.ix, best.iy);
+    /* never offer an insert on top of an existing vertex */
+    for (i = 0; i < m.pts.length; i++) {
+      var vs = toScreen(m.pts[i][0], m.pts[i][1]);
+      if (Math.hypot(s.x - vs.x, s.y - vs.y) < HANDLE_R + 5) return null;
+    }
+    return { marker: m, index: best.index, ix: best.ix, iy: best.iy, x: s.x, y: s.y };
   }
 
   function onPointerUp(e) {
+    if (pending) { pending.tracing = false; return; }
     if (!drag) return;
     var d = drag, img = App.activeImage();
     drag = null;
@@ -923,6 +1037,8 @@
     hoverBodyId = null;
     hoverEdgeId = null;
     hoverHandle = null;
+    hoverInsert = null;
+    lastPointer = null;
     if (window.UI) { window.UI.moveBinCursor(0, 0, false); window.UI.setCursorReadout(null); }
     Canvas.render();
   }
@@ -1037,6 +1153,7 @@
     if (drag && drag.mode === 'pan') c = 'grabbing';
     else if (spaceDown) c = 'grab';
     else if (isDeleteMode()) c = 'default';
+    else if (hoverInsert) c = 'copy';
     else if (hoverHandle) {
       var id = hoverHandle.id;
       if (id === 'rot') c = 'grab';

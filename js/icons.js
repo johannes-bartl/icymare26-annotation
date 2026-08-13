@@ -14,6 +14,8 @@ window.ICONS = {
   zoomout:   '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16" y2="16"/><line x1="8" y1="11" x2="14" y2="11"/>',
   chevleft:  '<polyline points="15 18 9 12 15 6"/>',
   chevright: '<polyline points="9 18 15 12 9 6"/>',
+  chevup:    '<polyline points="6 15 12 9 18 15"/>',
+  chevdown:  '<polyline points="6 9 12 15 18 9"/>',
   x:         '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   check:     '<polyline points="20 6 9 17 4 12"/>',
   edit:      '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
@@ -25,6 +27,7 @@ window.ICONS = {
   rect:      '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
   line:      '<line x1="4.5" y1="19.5" x2="19.5" y2="4.5"/><circle cx="4.5" cy="19.5" r="2" fill="currentColor" stroke="none"/><circle cx="19.5" cy="4.5" r="2" fill="currentColor" stroke="none"/>',
   ellipse:   '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
+  mirror:    '<line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="3 2.5"/><path d="M9 7 4 12l5 5z"/><path d="m15 7 5 5-5 5z"/>',
   polygon:   '<path d="M12 3.2 20.4 9.3 17.2 19.2H6.8L3.6 9.3z"/>',
   pose:      '<circle cx="12" cy="4.6" r="2.3"/><path d="M12 7.2v6.4"/><path d="M6.6 9.6 12 8.6l5.4 1"/><path d="m12 13.6-3 6.6"/><path d="m12 13.6 3 6.6"/>'
 };

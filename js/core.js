@@ -407,7 +407,7 @@
      in variable-width columns — this pivots in one line of pandas. */
   var POLY_COLUMNS = [
     'image_name', 'image_width', 'image_height',
-    'class_name', 'kind', 'instance_id', 'n_vertices', 'area_px',
+    'class_name', 'instance_id', 'n_vertices', 'area_px',
     'vertex_index', 'x', 'y'
   ];
 
@@ -418,7 +418,7 @@
       for (k = 0; k < m.pts.length; k++) {
         rows.push([
           csvCell(img.name), num(img.w), num(img.h),
-          csvCell(typeName(t)), csvCell(t && t.kind ? t.kind : 'thing'),
+          csvCell(typeName(t)),
           inst, m.pts.length, num(area),
           k, num(m.pts[k][0]), num(m.pts[k][1])
         ].join(','));

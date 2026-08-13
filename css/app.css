@@ -37,7 +37,10 @@ html, body {
 
 body.resizing { cursor: col-resize; user-select: none; }
 
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* The UA's default `padding: 1px 6px` on <button> eats the content box of any
+   fixed-size icon button and squashes the glyph, so zero it here — every button
+   style below sets its own padding. */
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 svg { display: block; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -500,20 +503,6 @@ input[type="color"] {
 .keyopt.taken { opacity: .3; cursor: not-allowed; }
 .keyopt.wide { min-width: 54px; }
 
-/* thing / stuff toggle */
-.segrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.segopt {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-  padding: 9px 11px;
-  border: 1px solid var(--border-2); border-radius: var(--radius);
-  background: #0e131b; color: var(--muted);
-  font-size: 12.5px; text-align: left;
-  transition: all .12s;
-}
-.segopt small { color: var(--dim); font-size: 11px; line-height: 1.35; }
-.segopt:hover { border-color: #46536a; color: var(--text); }
-.segopt.active { border-color: var(--accent); background: rgba(76,154,255,.12); color: var(--text); }
-
 /* skeleton summary row in the type editor */
 .skelrow {
   display: flex; align-items: center; gap: 10px;
@@ -553,7 +542,12 @@ select:focus { border-color: var(--accent); }
   border: 1px solid var(--border-2); border-radius: var(--radius);
   cursor: crosshair; touch-action: none;
 }
-.skel-hint { margin: 0; color: var(--dim); font-size: 11.3px; line-height: 1.5; }
+.skel-hint {
+  margin: 0; min-height: 32px;
+  color: var(--dim); font-size: 11.3px; line-height: 1.5;
+}
+.skel-hint.on { color: var(--muted); }
+.skel-hint b { color: var(--accent); }
 
 .skel-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .skel-sidehead {
@@ -581,6 +575,33 @@ select:focus { border-color: var(--accent); }
 }
 .kp-name { flex: 1; min-width: 40px; height: 26px; font-size: 12px; }
 .kp-side { flex: none; width: 44px; height: 26px; padding: 0 2px; font-size: 11.5px; }
+
+.kp-flip {
+  flex: none; min-width: 22px; text-align: center;
+  padding: 1px 3px; border-radius: 4px;
+  background: rgba(76,154,255,.16); color: #9ccaff;
+  font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.kp-flip.empty { background: none; }
+
+.iconbtn.micro { width: 19px; height: 22px; flex: none; border-radius: 4px; }
+.iconbtn.micro:disabled { opacity: .25; cursor: default; background: none; }
+
+/* icon buttons are flex containers — stop the glyph being squeezed narrow */
+.iconbtn svg, .btn svg, .tool svg, .rail-btn svg, .shapeopt svg { flex: none; }
+
+.skel-note {
+  margin: 0; padding: 10px 12px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--dim); font-size: 11.6px; line-height: 1.65;
+}
+.skel-note b { color: var(--muted); }
+.skel-note code {
+  padding: 1px 4px; border-radius: 3px; background: #0b1017;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.8px;
+}
+.skel-note .kp-flip { display: inline-block; }
 
 @media (max-width: 700px) {
   .skel-grid { grid-template-columns: minmax(0, 1fr); }
