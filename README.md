@@ -20,19 +20,29 @@ Just open `index.html` in a browser — there is no build step and no dependenci
 
 ## Controls
 
+The `?` button in the top bar lists all of this in the app itself.
+
 | Action | How |
 | --- | --- |
 | Draw a marker | Left-drag on the image (click for Point markers) |
-| Move / resize | Left-drag the marker or one of its handles |
+| Resize / move | Left-drag a handle — see below |
 | Rotate | Drag the round handle above a rotatable marker (Shift snaps to 15°) |
 | Pan | **Right-drag** (also middle-drag, or Space + drag) |
 | Zoom | Mouse wheel · `+` / `−` · `F` fits the image |
-| Delete one marker | Hold **Ctrl** and click it (a bin follows the cursor), or the bin tool `X` |
+| Turn the image 90° | `R` — **display only**, exported coordinates never change |
+| Delete one marker | Hold **Ctrl** and click it (a bin appears beside the cursor), or the bin tool `X` |
 | Select many | Select tool `V`, then drag a box · Shift+click adds · `Ctrl+A` selects all |
 | Delete a selection | `Delete`, or the bin button in the top bar |
 | Switch marker type | Its hotkey `1`–`0`, or click it in the Markers panel |
 | Previous / next image | `,` and `.` or the arrow keys |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+
+Markers are drawn as **outlines with no fill**, and their handles appear on their own as
+soon as the cursor comes near an edge — nothing has to be clicked or selected first.
+A marker can never be dragged around by its middle, so the inside of a box stays free
+canvas that you can draw another marker on. Boxes and ellipses are reshaped by their
+eight handles, lines by their two endpoints, and a point is picked up and moved once you
+hover close enough to it.
 
 The sidebar switches between **Images** and **Marker types** with the two icons on the
 far left. Drag its right edge to resize it; click the active icon to collapse it.
@@ -58,14 +68,23 @@ One row per marker, coordinates in **absolute image pixels**, origin at the top-
 | Column | Meaning |
 | --- | --- |
 | `image_name`, `image_width`, `image_height` | the source image |
-| `marker_id` | unique id of this marker |
 | `class_name` | the marker type's name |
 | `marker_type` | `point` · `rect` · `line` · `ellipse` |
-| `cx`, `cy` | marker centre (the point itself, or the line's midpoint) |
-| `width`, `height` | side lengths of the rectangle / full axes of the ellipse; bounding-box extents for a line; `0` for a point |
-| `angle_deg` | rotation, clockwise, `0` when not rotatable; for a line, its orientation |
-| `x1`, `y1`, `x2`, `y2` | line endpoints only, empty otherwise |
-| `bbox_x1` … `bbox_y2` | axis-aligned bounding box of the marker — the column pair to use when converting to YOLO |
+| `x`, `y` | see the table below — the meaning depends on the marker type |
+| `w`, `h` | box side lengths / full ellipse axes; empty for points and lines |
+| `x2`, `y2` | the far end of a line; empty otherwise |
+| `angle_deg` | clockwise rotation about the shape's own centre; `0` when not rotatable, empty for points and lines |
+
+| Marker type | Columns used |
+| --- | --- |
+| `point` | `x`, `y` — the point itself |
+| `rect` | `x`, `y` = top-left corner, `w`, `h`, `angle_deg` |
+| `ellipse` | `x`, `y` = top-left corner of its box, `w`, `h`, `angle_deg` |
+| `line` | `x`, `y` = start, `x2`, `y2` = end |
+
+For a rotated box or ellipse, `x`, `y`, `w`, `h` describe it **before** rotation and
+`angle_deg` turns it about its centre — so the four numbers stay exact, and at
+`angle_deg = 0` they are simply the axis-aligned bounding box.
 
 ### Converting to YOLO
 
@@ -75,22 +94,25 @@ YOLO wants `class_id cx cy w h` normalised to 0–1, one `.txt` per image:
 import pandas as pd
 
 df = pd.read_csv("annotations.csv")
+df = df[df.marker_type == "rect"]
 classes = sorted(df.class_name.unique())
 
 for name, g in df.groupby("image_name"):
     W, H = g.image_width.iloc[0], g.image_height.iloc[0]
-    lines = []
-    for _, r in g.iterrows():
-        cx = (r.bbox_x1 + r.bbox_x2) / 2 / W
-        cy = (r.bbox_y1 + r.bbox_y2) / 2 / H
-        w  = (r.bbox_x2 - r.bbox_x1) / W
-        h  = (r.bbox_y2 - r.bbox_y1) / H
-        lines.append(f"{classes.index(r.class_name)} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
+    lines = [
+        f"{classes.index(r.class_name)} "
+        f"{(r.x + r.w / 2) / W:.6f} {(r.y + r.h / 2) / H:.6f} "
+        f"{r.w / W:.6f} {r.h / H:.6f}"
+        for _, r in g.iterrows()
+    ]
     open(name.rsplit(".", 1)[0] + ".txt", "w").write("\n".join(lines))
 ```
 
+(YOLO boxes are axis-aligned, so this assumes `angle_deg` is 0. If you annotate rotated
+boxes, either widen them to their bounding box first or use an oriented-box model.)
+
 ## Notes
 
-Work in progress is kept in the browser's `localStorage`, keyed by filename and file size —
-reload the page, add the same images again, and your markers come back. It is not a
-substitute for exporting: clearing site data loses everything.
+**Nothing is saved anywhere.** Marker types and annotations live only as long as the tab
+does — reloading or closing it throws them away, and the browser will ask you to confirm
+first. Export the CSV before you leave.

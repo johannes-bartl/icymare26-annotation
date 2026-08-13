@@ -18,6 +18,7 @@ window.ICONS = {
   check:     '<polyline points="20 6 9 17 4 12"/>',
   edit:      '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   rotate:    '<polyline points="21 4 21 9 16 9"/><path d="M19.4 14a8 8 0 1 1-1.9-8.4L21 9"/>',
+  help:      '<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.9-2.8 2.9"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 
   /* marker-mode glyphs */
   point:     '<circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2 2.4"/>',

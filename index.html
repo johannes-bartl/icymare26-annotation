@@ -50,6 +50,8 @@
 
     <div class="sep"></div>
 
+    <button class="tool" id="btn-help" title="Keyboard shortcuts (?)"><span data-icon="help"></span></button>
+
     <button class="btn primary" id="btn-export">
       <span data-icon="download"></span> Export CSV
     </button>
@@ -117,6 +119,7 @@
         <span id="st-name">—</span>
         <span id="st-dims"></span>
         <span id="st-cursor"></span>
+        <span id="st-rot"></span>
         <span class="spacer"></span>
         <span id="st-count"></span>
         <span id="st-sel"></span>
@@ -197,6 +200,57 @@
     <div class="modal-foot">
       <button class="btn" data-close>Cancel</button>
       <button class="btn primary" id="f-save">Create</button>
+    </div>
+  </div>
+
+  <!-- keyboard shortcuts -->
+  <div class="modal wide" id="modal-help" hidden>
+    <div class="modal-head">
+      <h3>Shortcuts &amp; controls</h3>
+      <button class="iconbtn" data-close><span data-icon="x"></span></button>
+    </div>
+    <div class="modal-body help">
+
+      <section>
+        <h4>Mouse</h4>
+        <dl>
+          <dt>Left drag</dt><dd>Draw a new marker (a single click for Point types)</dd>
+          <dt>Left drag a handle</dt><dd>Resize a box or ellipse, move a point, move a line end</dd>
+          <dt>Right drag</dt><dd>Pan the image — middle drag and <kbd>Space</kbd> + drag do the same</dd>
+          <dt>Wheel</dt><dd>Zoom towards the cursor</dd>
+          <dt><kbd>Ctrl</kbd> + click</dt><dd>Delete the marker under the cursor</dd>
+          <dt><kbd>Shift</kbd> while drawing</dt><dd>Constrain to a square or circle</dd>
+          <dt><kbd>Shift</kbd> while rotating</dt><dd>Snap the angle to 15° steps</dd>
+        </dl>
+        <p class="note">Handles appear on their own as soon as the cursor comes near a
+        marker's edge — there is nothing to click first, and a marker can never be
+        dragged around by its middle.</p>
+      </section>
+
+      <section>
+        <h4>Keys</h4>
+        <dl>
+          <dt><kbd>1</kbd> … <kbd>0</kbd></dt><dd>Switch to that marker type</dd>
+          <dt><kbd>A</kbd></dt><dd>Annotate tool</dd>
+          <dt><kbd>V</kbd></dt><dd>Select tool — drag a box round several markers</dd>
+          <dt><kbd>X</kbd></dt><dd>Delete tool (a latched <kbd>Ctrl</kbd>)</dd>
+          <dt><kbd>Delete</kbd></dt><dd>Delete everything selected</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Clear the selection</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>A</kbd></dt><dd>Select every marker on this image</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dt><dd>Undo / redo</dd>
+          <dt><kbd>R</kbd></dt><dd>Turn the image 90° <em>on screen only</em> — exported coordinates are unaffected</dd>
+          <dt><kbd>F</kbd></dt><dd>Fit the image to the window</dd>
+          <dt><kbd>+</kbd> / <kbd>−</kbd></dt><dd>Zoom in / out</dd>
+          <dt><kbd>,</kbd> <kbd>.</kbd> or <kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next image</dd>
+          <dt><kbd>?</kbd></dt><dd>This dialog</dd>
+        </dl>
+      </section>
+
+      <p class="warn">Nothing is saved anywhere. Reloading or closing the tab discards
+      every marker and marker type — export the CSV before you leave.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" data-close>Got it</button>
     </div>
   </div>
 

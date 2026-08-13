@@ -241,60 +241,37 @@
     return true;
   };
 
-  /* ---------------------------------------------------------- persistence */
+  /* ---------------------------------------------------------- persistence
 
-  var STORE_KEY = 'icymare-annotator-v1';
-  var saveTimer = null;
+     Deliberately none. Nothing is written to localStorage: marker types and
+     annotations live only for the lifetime of the tab, and ui.js warns before
+     the page unloads. App.save() is kept as a no-op so call sites read the
+     same as before.                                                          */
 
-  /** Stable identity for an image file across sessions. */
+  /** Identity of an image file, used to skip duplicates within a session. */
   App.imageKey = function (file) { return file.name + '|' + file.size; };
 
-  App.save = function () {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(App.saveNow, 400);
-  };
+  App.save = function () {};
+  App.saveNow = function () {};
 
-  App.saveNow = function () {
-    try {
-      var s = App.state, byKey = {}, i, img;
-      for (i = 0; i < s.images.length; i++) {
-        img = s.images[i];
-        byKey[img.key] = { w: img.w, h: img.h, markers: s.markers[img.id] || [] };
-      }
-      localStorage.setItem(STORE_KEY, JSON.stringify({
-        v: 1, types: s.types, activeTypeId: s.activeTypeId, images: byKey
-      }));
-    } catch (e) { /* quota or private mode — annotation still works in-session */ }
-  };
+  /* Earlier builds of this tool did persist. Drop anything they left behind so
+     no stale annotations linger in someone's browser. */
+  try { localStorage.removeItem('icymare-annotator-v1'); } catch (e) {}
 
-  App.loadStore = function () {
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-  };
+  /* ----------------------------------------------------------- CSV export
 
-  /** Re-attach stored annotations to a freshly added image. */
-  App.hydrateImage = function (img) {
-    var store = App.loadStore();
-    if (!store || !store.images || !store.images[img.key]) return;
-    var rec = store.images[img.key];
-    if (rec.w && !img.w) { img.w = rec.w; img.h = rec.h; }
-    App.state.markers[img.id] = rec.markers || [];
-  };
-
-  App.clearStore = function () {
-    try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-  };
-
-  /* ----------------------------------------------------------- CSV export */
+     One row per marker, in absolute image pixels, origin top-left.
+       point    x, y
+       rect     x, y = top-left of the unrotated box, w, h, angle_deg
+       ellipse  x, y = top-left of the unrotated bounding box, w, h, angle_deg
+       line     x, y = start, x2, y2 = end
+     A rotated shape turns about its own centre, so (x, y, w, h, angle_deg)
+     stays lossless.                                                          */
 
   var CSV_COLUMNS = [
     'image_name', 'image_width', 'image_height',
-    'marker_id', 'class_name', 'marker_type',
-    'cx', 'cy', 'width', 'height', 'angle_deg',
-    'x1', 'y1', 'x2', 'y2',
-    'bbox_x1', 'bbox_y1', 'bbox_x2', 'bbox_y2'
+    'class_name', 'marker_type',
+    'x', 'y', 'w', 'h', 'x2', 'y2', 'angle_deg'
   ];
 
   function csvCell(v) {
@@ -308,8 +285,18 @@
     return (Math.round(v * 100) / 100).toString();
   }
 
+  /** Geometry columns [x, y, w, h, x2, y2, angle_deg] for one marker. */
+  function geomCells(m) {
+    if (m.shape === 'point') return [num(m.cx), num(m.cy), '', '', '', '', ''];
+    if (m.shape === 'line')  return [num(m.x1), num(m.y1), '', '', num(m.x2), num(m.y2), ''];
+    return [
+      num(m.cx - m.w / 2), num(m.cy - m.h / 2),
+      num(m.w), num(m.h), '', '', num(m.angle || 0)
+    ];
+  }
+
   App.buildCSV = function () {
-    var s = App.state, rows = [CSV_COLUMNS.join(',')], i, j, img, list, m, t, b, c, row;
+    var s = App.state, rows = [CSV_COLUMNS.join(',')], i, j, img, list, m, t;
 
     for (i = 0; i < s.images.length; i++) {
       img = s.images[i];
@@ -317,24 +304,10 @@
       for (j = 0; j < list.length; j++) {
         m = list[j];
         t = App.getType(m.typeId);
-        b = App.bboxOf(m);
-        c = App.centerOf(m);
-        row = [
+        rows.push([
           csvCell(img.name), num(img.w), num(img.h),
-          csvCell(m.id), csvCell(t ? t.name : '(deleted type)'), csvCell(m.shape),
-          num(c.x), num(c.y),
-          m.shape === 'point' ? '0' : num(m.shape === 'line' ? b.x2 - b.x1 : m.w),
-          m.shape === 'point' ? '0' : num(m.shape === 'line' ? b.y2 - b.y1 : m.h),
-          num(m.shape === 'line'
-            ? Math.atan2(m.y2 - m.y1, m.x2 - m.x1) * 180 / Math.PI
-            : (m.angle || 0)),
-          m.shape === 'line' ? num(m.x1) : '',
-          m.shape === 'line' ? num(m.y1) : '',
-          m.shape === 'line' ? num(m.x2) : '',
-          m.shape === 'line' ? num(m.y2) : '',
-          num(b.x1), num(b.y1), num(b.x2), num(b.y2)
-        ];
-        rows.push(row.join(','));
+          csvCell(t ? t.name : '(deleted type)'), csvCell(m.shape)
+        ].concat(geomCells(m)).join(','));
       }
     }
     return rows.join('\r\n') + '\r\n';

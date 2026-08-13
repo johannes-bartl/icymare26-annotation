@@ -32,7 +32,7 @@
     els.chip = $('active-type-chip');
 
     Canvas.init();
-    restoreTypes();
+    seedTypes();
     wireRail();
     wireResizer();
     wireToolbar();
@@ -45,14 +45,9 @@
     refresh();
   }
 
-  function restoreTypes() {
-    var store = App.loadStore();
-    if (store && store.types && store.types.length) {
-      App.state.types = store.types;
-      App.state.activeTypeId = App.getType(store.activeTypeId) ? store.activeTypeId : store.types[0].id;
-      return;
-    }
-    /* first run: one ready-to-use type so the canvas is never dead on arrival */
+  /* Nothing is persisted between sessions, so every load starts from one
+     ready-to-use type — otherwise the canvas would be dead on arrival. */
+  function seedTypes() {
     App.state.types = [{
       id: App.uid('t'), name: 'Animal', shape: 'rect',
       rotatable: false, color: '#4c9aff', hotkey: '1'
@@ -134,6 +129,7 @@
     $('btn-prev').addEventListener('click', function () { step(-1); });
     $('btn-next').addEventListener('click', function () { step(1); });
     $('btn-export').addEventListener('click', exportCSV);
+    $('btn-help').addEventListener('click', function () { openModal('modal-help'); });
 
     $('btn-new-type').addEventListener('click', function () { openTypeEditor(null); });
     $('btn-new-type-2').addEventListener('click', function () { openTypeEditor(null); });
@@ -239,7 +235,6 @@
         id: App.uid('img'), key: key, name: f.name, file: f,
         url: URL.createObjectURL(f), w: 0, h: 0, loaded: false
       };
-      App.hydrateImage(img);
       App.state.images.push(img);
       added += 1;
     }
@@ -347,6 +342,7 @@
     $('st-dims').textContent = img && img.w ? img.w + ' × ' + img.h + ' px' : '';
     $('st-count').textContent = img ? App.countOfImage(img.id) + ' markers' : '';
     $('st-sel').textContent = App.state.selection.length ? App.state.selection.length + ' selected' : '';
+    $('st-rot').textContent = Canvas.view.rot ? 'view rotated ' + (Canvas.view.rot * 90) + '°' : '';
     $('imgnav-label').textContent = (idx + 1) + ' / ' + n;
     $('btn-zoom-level').textContent = Math.round(Canvas.view.scale * 100) + '%';
   }
@@ -633,7 +629,9 @@
         case 'v': case 'V': setTool('select'); break;
         case 'a': case 'A': setTool('annotate'); break;
         case 'x': case 'X': setTool(App.state.tool === 'delete' ? 'annotate' : 'delete'); break;
+        case 'r': case 'R': Canvas.rotateView(); break;
         case 'f': case 'F': Canvas.fit(); updateStatus(); break;
+        case '?': openModal('modal-help'); break;
         case '+': case '=': Canvas.zoomAt(1.25); updateStatus(); break;
         case '-': case '_': Canvas.zoomAt(0.8); updateStatus(); break;
         case ',': step(-1); break;
@@ -675,7 +673,14 @@
       UI.moveBinCursor(0, 0, false);
     });
 
-    window.addEventListener('beforeunload', function () { App.saveNow(); });
+    /* Nothing is stored between sessions, so reloading or closing the tab
+       throws the work away. Browsers only allow their own generic wording. */
+    window.addEventListener('beforeunload', function (e) {
+      if (!App.state.images.length && !App.totalMarkers()) return;
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    });
   }
 
   function isTyping(el) {
