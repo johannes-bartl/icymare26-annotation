@@ -32,7 +32,6 @@
     els.chip = $('active-type-chip');
 
     Canvas.init();
-    seedTypes();
     wireRail();
     wireResizer();
     wireToolbar();
@@ -45,15 +44,6 @@
     refresh();
   }
 
-  /* Nothing is persisted between sessions, so every load starts from one
-     ready-to-use type — otherwise the canvas would be dead on arrival. */
-  function seedTypes() {
-    App.state.types = [{
-      id: App.uid('t'), name: 'Animal', shape: 'rect',
-      rotatable: false, color: '#4c9aff', hotkey: '1'
-    }];
-    App.state.activeTypeId = App.state.types[0].id;
-  }
 
   /* ================================================================== rail */
 
