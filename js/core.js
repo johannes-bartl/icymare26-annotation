@@ -1,5 +1,5 @@
-/* ============================================================================
-   core.js — application state, geometry helpers, persistence, CSV export.
+﻿/* ============================================================================
+   core.js â€” application state, geometry helpers, persistence, CSV export.
    All marker coordinates are stored in ABSOLUTE IMAGE PIXELS (origin top-left).
    ========================================================================== */
 (function () {
@@ -17,7 +17,10 @@
     markers: {},         // imageId -> [marker]
     selection: [],       // marker ids on the active image
     tool: 'annotate',    // 'annotate' | 'select' | 'delete'
+    locked: false,       // existing markers only editable while Shift is held
     ctrlDown: false,
+    altDown: false,
+    shiftDown: false,
     panel: 'files',
     sidebarCollapsed: false
   };
@@ -177,7 +180,7 @@
     return inside;
   };
 
-  /** Rotate (px,py) around (ox,oy) by -angleDeg — i.e. into the marker's local frame. */
+  /** Rotate (px,py) around (ox,oy) by -angleDeg â€” i.e. into the marker's local frame. */
   App.toLocal = function (px, py, ox, oy, angleDeg) {
     var a = -App.deg2rad(angleDeg || 0),
         dx = px - ox, dy = py - oy,
@@ -223,12 +226,12 @@
     m.cx += dx; m.cy += dy;
   };
 
-  /** Lay a type's template pose inside a box — the pre-posed skeleton. */
+  /** Lay a type's template pose inside a box â€” the pre-posed skeleton. */
   App.makePose = function (type, x, y, w, h) {
     var sk = type.skeleton, kps = [], i, k;
     for (i = 0; i < sk.keypoints.length; i++) {
       k = sk.keypoints[i];
-      /* [x, y, visibility, touched] — `touched` is UI-only and never exported */
+      /* [x, y, visibility, touched] â€” `touched` is UI-only and never exported */
       kps.push([x + k.tx * w, y + k.ty * h, App.VIS.VISIBLE, 0]);
     }
     return {
@@ -333,19 +336,30 @@
 
   /* ----------------------------------------------------------- CSV export
 
-     One row per marker, in absolute image pixels, origin top-left.
+     One file per marker type, carrying only the columns that type's shape
+     actually needs. Coordinates are absolute image pixels, origin top-left.
+
        point    x, y
        rect     x, y = top-left of the unrotated box, w, h, angle_deg
        ellipse  x, y = top-left of the unrotated bounding box, w, h, angle_deg
        line     x, y = start, x2, y2 = end
+       polygon  one row per vertex
+       pose     one row per keypoint, with the instance's box repeated
+
      A rotated shape turns about its own centre, so (x, y, w, h, angle_deg)
      stays lossless.                                                          */
 
-  var CSV_COLUMNS = [
-    'image_name', 'image_width', 'image_height',
-    'class_name', 'marker_type',
-    'x', 'y', 'w', 'h', 'x2', 'y2', 'angle_deg'
-  ];
+  var HEAD = ['image_name', 'image_width', 'image_height', 'class_name'];
+
+  var COLUMNS = {
+    point:   HEAD.concat(['x', 'y']),
+    rect:    HEAD.concat(['x', 'y', 'w', 'h', 'angle_deg']),
+    ellipse: HEAD.concat(['x', 'y', 'w', 'h', 'angle_deg']),
+    line:    HEAD.concat(['x', 'y', 'x2', 'y2']),
+    polygon: HEAD.concat(['instance_id', 'n_vertices', 'area_px', 'vertex_index', 'x', 'y']),
+    pose:    HEAD.concat(['instance_id', 'box_x', 'box_y', 'box_w', 'box_h',
+                          'keypoint_index', 'keypoint_name', 'x', 'y', 'visibility'])
+  };
 
   function csvCell(v) {
     if (v === null || v === undefined) return '';
@@ -358,102 +372,64 @@
     return (Math.round(v * 100) / 100).toString();
   }
 
-  /** Geometry columns [x, y, w, h, x2, y2, angle_deg] for one marker. */
-  function geomCells(m) {
-    if (m.shape === 'point') return [num(m.cx), num(m.cy), '', '', '', '', ''];
-    if (m.shape === 'line')  return [num(m.x1), num(m.y1), '', '', num(m.x2), num(m.y2), ''];
-    return [
-      num(m.cx - m.w / 2), num(m.cy - m.h / 2),
-      num(m.w), num(m.h), '', '', num(m.angle || 0)
-    ];
-  }
+  /** Push the row(s) one marker contributes onto `rows`. */
+  function appendRows(rows, head, m, t, inst) {
+    var k, kp, name, sk, area;
 
-  var BASIC_SHAPES = { point: 1, rect: 1, line: 1, ellipse: 1 };
-
-  /**
-   * Walk every marker, calling fn(image, marker, type, instanceId).
-   * Instance ids restart at 1 per image and per shape family, so they line up
-   * with the row groupings in the long-format files.
-   */
-  function eachMarker(want, fn) {
-    var s = App.state, i, j, img, list, m, counters;
-    for (i = 0; i < s.images.length; i++) {
-      img = s.images[i];
-      list = s.markers[img.id] || [];
-      counters = {};
-      for (j = 0; j < list.length; j++) {
-        m = list[j];
-        if (!want(m)) continue;
-        counters[m.shape] = (counters[m.shape] || 0) + 1;
-        fn(img, m, App.getType(m.typeId), counters[m.shape]);
-      }
+    if (m.shape === 'point') {
+      rows.push(head.concat([num(m.cx), num(m.cy)]).join(','));
+      return;
     }
-  }
-
-  function typeName(t) { return t ? t.name : '(deleted type)'; }
-
-  App.buildCSV = function () {
-    var rows = [CSV_COLUMNS.join(',')];
-    eachMarker(function (m) { return BASIC_SHAPES[m.shape]; }, function (img, m, t) {
-      rows.push([
-        csvCell(img.name), num(img.w), num(img.h),
-        csvCell(typeName(t)), csvCell(m.shape)
-      ].concat(geomCells(m)).join(','));
-    });
-    return rows.join('\r\n') + '\r\n';
-  };
-
-  /* Long format: one row per vertex. Variable-length geometry does not belong
-     in variable-width columns — this pivots in one line of pandas. */
-  var POLY_COLUMNS = [
-    'image_name', 'image_width', 'image_height',
-    'class_name', 'instance_id', 'n_vertices', 'area_px',
-    'vertex_index', 'x', 'y'
-  ];
-
-  App.buildPolygonCSV = function () {
-    var rows = [POLY_COLUMNS.join(',')];
-    eachMarker(function (m) { return m.shape === 'polygon'; }, function (img, m, t, inst) {
-      var area = App.polygonArea(m.pts), k;
+    if (m.shape === 'rect' || m.shape === 'ellipse') {
+      rows.push(head.concat([
+        num(m.cx - m.w / 2), num(m.cy - m.h / 2), num(m.w), num(m.h), num(m.angle || 0)
+      ]).join(','));
+      return;
+    }
+    if (m.shape === 'line') {
+      rows.push(head.concat([num(m.x1), num(m.y1), num(m.x2), num(m.y2)]).join(','));
+      return;
+    }
+    if (m.shape === 'polygon') {
+      area = App.polygonArea(m.pts);
       for (k = 0; k < m.pts.length; k++) {
-        rows.push([
-          csvCell(img.name), num(img.w), num(img.h),
-          csvCell(typeName(t)),
-          inst, m.pts.length, num(area),
-          k, num(m.pts[k][0]), num(m.pts[k][1])
-        ].join(','));
+        rows.push(head.concat([
+          inst, m.pts.length, num(area), k, num(m.pts[k][0]), num(m.pts[k][1])
+        ]).join(','));
       }
-    });
-    return rows.join('\r\n') + '\r\n';
-  };
-
-  /* Long format again: one row per keypoint, with the instance's box repeated.
-     Wide format breaks the moment two skeletons have different point counts. */
-  var POSE_COLUMNS = [
-    'image_name', 'image_width', 'image_height',
-    'class_name', 'instance_id', 'box_x', 'box_y', 'box_w', 'box_h',
-    'keypoint_index', 'keypoint_name', 'x', 'y', 'visibility'
-  ];
-
-  App.buildPoseCSV = function () {
-    var rows = [POSE_COLUMNS.join(',')];
-    eachMarker(function (m) { return m.shape === 'pose'; }, function (img, m, t, inst) {
-      var sk = t && t.skeleton, k, kp, name;
+      return;
+    }
+    if (m.shape === 'pose') {
+      sk = t.skeleton;
       for (k = 0; k < m.kps.length; k++) {
         kp = m.kps[k];
         name = (sk && sk.keypoints[k]) ? sk.keypoints[k].name : 'point_' + (k + 1);
-        rows.push([
-          csvCell(img.name), num(img.w), num(img.h),
-          csvCell(typeName(t)), inst,
+        rows.push(head.concat([
+          inst,
           num(m.cx - m.w / 2), num(m.cy - m.h / 2), num(m.w), num(m.h),
           k, csvCell(name),
           /* an absent keypoint has no meaningful position */
           kp[2] === App.VIS.ABSENT ? '' : num(kp[0]),
           kp[2] === App.VIS.ABSENT ? '' : num(kp[1]),
           kp[2]
-        ].join(','));
+        ]).join(','));
       }
-    });
+    }
+  }
+
+  App.buildTypeCSV = function (t) {
+    var rows = [COLUMNS[t.shape].join(',')], s = App.state, i, j, img, list, m, inst;
+    for (i = 0; i < s.images.length; i++) {
+      img = s.images[i];
+      list = s.markers[img.id] || [];
+      inst = 0;
+      for (j = 0; j < list.length; j++) {
+        m = list[j];
+        if (m.typeId !== t.id) continue;
+        inst += 1;                       // 1-based, restarting on each image
+        appendRows(rows, [csvCell(img.name), num(img.w), num(img.h), csvCell(t.name)], m, t, inst);
+      }
+    }
     return rows.join('\r\n') + '\r\n';
   };
 
@@ -480,34 +456,51 @@
     return n;
   };
 
-  /** How many markers of each family exist, so the export can adapt. */
-  App.exportTally = function () {
-    var tally = { basic: 0, polygon: 0, pose: 0 }, k, list, i, m;
-    for (k in App.state.markers) {
-      list = App.state.markers[k];
-      for (i = 0; i < list.length; i++) {
-        m = list[i];
-        if (BASIC_SHAPES[m.shape]) tally.basic += 1;
-        else if (m.shape === 'polygon') tally.polygon += 1;
-        else if (m.shape === 'pose') tally.pose += 1;
-      }
-    }
-    return tally;
-  };
+  function slug(s) {
+    return String(s).toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'markers';
+  }
 
   /**
-   * Whichever kinds are present get a file; a lone kind downloads on its own,
-   * several are bundled into a ZIP.
+   * The files an export would produce right now: one per marker type that has
+   * anything in it, plus the blueprints when poses are involved. Drives both
+   * the export menu and the download itself, so the menu can never offer a
+   * file that would come out empty.
    */
-  App.buildExportFiles = function () {
-    var tally = App.exportTally(), files = [];
-    if (tally.basic) files.push({ name: 'annotations.csv', text: App.buildCSV() });
-    if (tally.polygon) files.push({ name: 'polygons.csv', text: App.buildPolygonCSV() });
-    if (tally.pose) {
-      files.push({ name: 'pose.csv', text: App.buildPoseCSV() });
-      files.push({ name: 'skeletons.json', text: App.buildSkeletonsJSON() });
+  App.exportFiles = function () {
+    var out = [], used = {}, i, t, n, base, poses = 0;
+
+    for (i = 0; i < App.state.types.length; i++) {
+      t = App.state.types[i];
+      n = App.countOfType(t.id);
+      if (!n) continue;
+      if (t.shape === 'pose') poses += 1;
+
+      base = slug(t.name);
+      if (used[base]) { used[base] += 1; base += '_' + used[base]; } else { used[base] = 1; }
+
+      out.push({
+        name: base + '.csv',
+        label: t.name,
+        shape: t.shape,
+        color: t.color,
+        count: n,
+        text: App.buildTypeCSV(t)
+      });
     }
-    return files;
+
+    if (poses) {
+      out.push({
+        name: 'skeletons.json',
+        label: 'Skeleton blueprints',
+        shape: 'pose',
+        color: null,
+        count: poses,
+        text: App.buildSkeletonsJSON()
+      });
+    }
+    return out;
   };
 
   App.stamp = function () {
@@ -526,26 +519,29 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   };
 
-  App.exportAll = function () {
-    var files = App.buildExportFiles(), stamp = App.stamp(), i, entries;
+  /** A BOM keeps Excel from mangling non-ASCII class names. */
+  function blobFor(file) {
+    return /\.csv$/.test(file.name)
+      ? new Blob(['ï»¿' + file.text], { type: 'text/csv;charset=utf-8' })
+      : new Blob([file.text], { type: 'application/json;charset=utf-8' });
+  }
+
+  App.downloadFile = function (file) {
+    App.download(blobFor(file), file.name.replace(/(\.\w+)$/, '_' + App.stamp() + '$1'));
+  };
+
+  App.downloadAll = function () {
+    var files = App.exportFiles(), entries = [], i;
     if (!files.length) return 0;
+    if (files.length === 1) { App.downloadFile(files[0]); return 1; }
 
-    if (files.length === 1) {
-      App.download(
-        new Blob(['﻿' + files[0].text], { type: 'text/csv;charset=utf-8' }),
-        files[0].name.replace(/\.csv$/, '_' + stamp + '.csv')
-      );
-      return files.length;
-    }
-
-    entries = [];
     for (i = 0; i < files.length; i++) {
       entries.push({
         name: files[i].name,
-        text: /\.csv$/.test(files[i].name) ? '﻿' + files[i].text : files[i].text
+        text: /\.csv$/.test(files[i].name) ? 'ï»¿' + files[i].text : files[i].text
       });
     }
-    App.download(window.Zip.create(entries), 'annotations_' + stamp + '.zip');
+    App.download(window.Zip.create(entries), 'annotations_' + App.stamp() + '.zip');
     return files.length;
   };
 

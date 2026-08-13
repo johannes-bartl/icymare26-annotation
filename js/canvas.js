@@ -47,6 +47,9 @@
   var hoverBodyId = null;      // marker under the cursor (delete / select tool)
   var hoverHandle = null;
   var hoverInsert = null;      // {marker, index, x, y} — where a new vertex would go
+  var hoverKill = null;        // {marker, index, x, y} — vertex Alt+click would remove
+  var lastImage = null;        // image coords of the last pointer position
+  var lastClient = { x: 0, y: 0 };   // viewport coords, for the floating bin
   var spaceDown = false;
   var rafPending = false;
   var lastPointer = null;      // screen coords, for thinning out dense handles
@@ -247,6 +250,7 @@
     if (drag && drag.mode === 'create' && drag.preview) drawMarker(drag.preview, false, true);
     if (pending) drawPending();
     if (hoverInsert && !drag) drawInsertGhost();
+    if (hoverKill && !drag) drawKillGhost();
 
     /* rubber band */
     if (drag && drag.mode === 'band') {
@@ -406,6 +410,28 @@
     ctx.beginPath();
     ctx.moveTo(x - 3, y); ctx.lineTo(x + 3, y);
     ctx.moveTo(x, y - 3); ctx.lineTo(x, y + 3);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+
+  /** The vertex Alt+click is about to remove, marked in red. */
+  function drawKillGhost() {
+    var x = hoverKill.x, y = hoverKill.y;
+    ctx.beginPath();
+    ctx.arc(x, y, HANDLE_R + 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,77,77,.25)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, HANDLE_R + 1, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff4d4d';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 2.6, y - 2.6); ctx.lineTo(x + 2.6, y + 2.6);
+    ctx.moveTo(x + 2.6, y - 2.6); ctx.lineTo(x - 2.6, y + 2.6);
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.6;
     ctx.stroke();
@@ -717,6 +743,21 @@
   }
   Canvas.isDeleteMode = isDeleteMode;
 
+  /**
+   * Whether existing markers may be reshaped right now. The lock only guards
+   * the annotate tool — select and delete are explicit about their intent
+   * already — and Shift lifts it for as long as it is held.
+   */
+  function canEdit() {
+    return !App.state.locked || App.state.shiftDown || App.state.tool !== 'annotate';
+  }
+  Canvas.canEdit = canEdit;
+
+  /** Recompute hover state after a modifier key changed, without a mouse move. */
+  Canvas.refreshHover = function () {
+    if (lastPointer && lastImage && !drag && !pending) updateHover(lastPointer, lastImage);
+  };
+
   /* ------------------------------------------------------------- pointers */
 
   function onPointerDown(e) {
@@ -753,8 +794,9 @@
       return;
     }
 
-    /* a revealed handle always wins */
-    var h = armedHandleAt(p.x, p.y);
+    /* a revealed handle always wins — unless the lock is on and Shift is not
+       held, in which case the click falls through to placing a new marker */
+    var h = canEdit() ? armedHandleAt(p.x, p.y) : null;
     if (h) {
       /* Alt on a keypoint steps it through visible -> occluded -> absent */
       if (e.altKey && h.id.charAt(0) === 'k' && h.marker.shape === 'pose') {
@@ -785,7 +827,7 @@
     }
 
     /* the ghost handle on a polygon edge: drop a vertex in and start dragging it */
-    if (hoverInsert) {
+    if (hoverInsert && canEdit()) {
       App.pushUndo();
       var mk = hoverInsert.marker, at = hoverInsert.index + 1;
       mk.pts.splice(at, 0, [hoverInsert.ix, hoverInsert.iy]);
@@ -879,11 +921,13 @@
   function onPointerMove(e) {
     var p = evPos(e), ip = toImage(p.x, p.y), img = App.activeImage();
     lastPointer = p;
+    lastImage = ip;
+    lastClient = { x: e.clientX, y: e.clientY };
 
-    if (window.UI) {
-      window.UI.setCursorReadout(ip, img);
-      window.UI.moveBinCursor(e.clientX, e.clientY, isDeleteMode());
-    }
+    if (window.UI) window.UI.setCursorReadout(ip, img);
+    /* while drawing or dragging there is nothing to delete — updateHover puts
+       the bin back when the pointer is free again */
+    if ((pending || drag) && window.UI) window.UI.moveBinCursor(0, 0, false);
 
     if (pending) {
       pending.cursor = ip;
@@ -943,6 +987,11 @@
       hoverBodyId = m ? m.id : null;
       hoverEdgeId = null;
       hoverHandle = null;
+    } else if (!canEdit()) {
+      /* locked: nothing is grabbable, so no handles are offered at all */
+      hoverBodyId = null;
+      hoverEdgeId = null;
+      hoverHandle = null;
     } else {
       hoverBodyId = null;
       var prev = prevEdge ? App.getMarker(prevEdge) : null;
@@ -962,14 +1011,32 @@
       hoverHandle = armedHandleAt(p.x, p.y);
     }
 
-    var prevInsert = hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index);
-    hoverInsert = (!hoverHandle && !isDeleteMode()) ? insertPointAt(p, ip) : null;
+    var prevInsert = hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index),
+        prevKill = hoverKill && (hoverKill.marker.id + ':' + hoverKill.index);
+
+    hoverInsert = (!hoverHandle && !isDeleteMode() && canEdit()) ? insertPointAt(p, ip) : null;
+    hoverKill = killVertexAt();
+
+    /* Alt over a removable vertex borrows the delete cursor's bin, so the
+       gesture is announced rather than remembered */
+    if (window.UI) window.UI.moveBinCursor(lastClient.x, lastClient.y, isDeleteMode() || !!hoverKill);
 
     updateCursor();
     if (prevEdge !== hoverEdgeId || prevBody !== hoverBodyId ||
         prevHandle !== (hoverHandle && hoverHandle.id) ||
+        prevKill !== (hoverKill && (hoverKill.marker.id + ':' + hoverKill.index)) ||
         prevInsert !== (hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index)) ||
         hoverInsert) Canvas.render();
+  }
+
+  /** The polygon vertex that Alt+click would delete, if any. */
+  function killVertexAt() {
+    if (!App.state.altDown || !hoverHandle || !canEdit()) return null;
+    var m = hoverHandle.marker;
+    if (m.shape !== 'polygon' || hoverHandle.id.charAt(0) !== 'v') return null;
+    if (m.pts.length <= MIN_POLY_PTS) return null;          // nothing left to give
+    var i = +hoverHandle.id.slice(1), s = toScreen(m.pts[i][0], m.pts[i][1]);
+    return { marker: m, index: i, x: s.x, y: s.y };
   }
 
   /**
@@ -1038,7 +1105,9 @@
     hoverEdgeId = null;
     hoverHandle = null;
     hoverInsert = null;
+    hoverKill = null;
     lastPointer = null;
+    lastImage = null;
     if (window.UI) { window.UI.moveBinCursor(0, 0, false); window.UI.setCursorReadout(null); }
     Canvas.render();
   }
@@ -1153,6 +1222,7 @@
     if (drag && drag.mode === 'pan') c = 'grabbing';
     else if (spaceDown) c = 'grab';
     else if (isDeleteMode()) c = 'default';
+    else if (hoverKill) c = 'default';
     else if (hoverInsert) c = 'copy';
     else if (hoverHandle) {
       var id = hoverHandle.id;
@@ -1173,5 +1243,10 @@
 
   /** Marker whose handles are currently showing, if any. */
   Canvas.armedId = function () { return hoverEdgeId; };
+
+  /** The polygon vertex Alt+click would remove right now, if any. */
+  Canvas.killVertex = function () {
+    return hoverKill ? { markerId: hoverKill.marker.id, index: hoverKill.index } : null;
+  };
 
 })();

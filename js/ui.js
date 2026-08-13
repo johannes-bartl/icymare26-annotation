@@ -118,11 +118,32 @@
     $('btn-fit').addEventListener('click', function () { Canvas.fit(); updateStatus(); });
     $('btn-prev').addEventListener('click', function () { step(-1); });
     $('btn-next').addEventListener('click', function () { step(1); });
-    $('btn-export').addEventListener('click', exportCSV);
     $('btn-help').addEventListener('click', function () { openModal('modal-help'); });
+    $('btn-lock').addEventListener('click', function () { setLocked(!App.state.locked); });
+    $('onboard-new').addEventListener('click', function () { openTypeEditor(null); });
+    $('onboard-help').addEventListener('click', function () { openModal('modal-help'); });
+    wireExport();
 
     $('btn-new-type').addEventListener('click', function () { openTypeEditor(null); });
     $('btn-new-type-2').addEventListener('click', function () { openTypeEditor(null); });
+  }
+
+  /**
+   * The lock guards existing work: with it on, the annotate tool only ever
+   * places new markers, and the handles for editing one appear only while
+   * Shift is held. Stops a stray drag reshaping a marker you already placed.
+   */
+  function setLocked(v) {
+    App.state.locked = v;
+    var b = $('btn-lock');
+    b.classList.toggle('active', v);
+    b.querySelector('[data-icon]').innerHTML = window.svgIcon(v ? 'lock' : 'unlock', 18);
+    b.title = v
+      ? 'Existing markers are locked — hold Shift to resize or move one. Click to unlock. (L)'
+      : 'Markers can be edited freely. Click to lock them so you only place new ones. (L)';
+    Canvas.updateCursor();
+    Canvas.render();
+    updateStatus();
   }
 
   function setTool(t) {
@@ -137,18 +158,86 @@
     Canvas.render();
   }
 
-  function exportCSV() {
-    if (!App.totalMarkers()) { UI.toast('Nothing to export yet'); return; }
-    var n = App.exportAll(), tally = App.exportTally(), bits = [];
-    if (tally.basic) bits.push(tally.basic + ' markers');
-    if (tally.polygon) bits.push(tally.polygon + ' polygons');
-    if (tally.pose) bits.push(tally.pose + ' poses');
-    UI.toast('Exported ' + bits.join(' · ') + (n > 1 ? ' as a ZIP' : ''));
-  }
-
   UI.downloadText = function (text, filename, mime) {
     App.download(new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' }), filename);
   };
+
+  /* ---------------------------------------------------------- export menu */
+
+  var exportFiles = [], menuTimer = null;
+
+  function wireExport() {
+    var wrap = $('exportwrap'), menu = $('export-menu');
+
+    wrap.addEventListener('mouseenter', function () {
+      if (menuTimer) clearTimeout(menuTimer);
+      renderExportMenu();
+      menu.hidden = false;
+    });
+    wrap.addEventListener('mouseleave', function () {
+      menuTimer = setTimeout(function () { menu.hidden = true; }, 180);
+    });
+
+    $('btn-export').addEventListener('click', function () { downloadAll(); });
+
+    menu.addEventListener('click', function (e) {
+      var row = e.target.closest('.exportrow');
+      if (!row) return;
+      if (row.dataset.all) { downloadAll(); return; }
+      var f = exportFiles[+row.dataset.i];
+      if (!f) return;
+      App.downloadFile(f);
+      UI.toast('Downloaded ' + f.name);
+    });
+  }
+
+  function downloadAll() {
+    var n = App.downloadAll();
+    if (!n) { UI.toast('Nothing to export yet — draw some markers first'); return; }
+    UI.toast(n === 1 ? 'Exported 1 file' : 'Exported ' + n + ' files as a ZIP');
+    $('export-menu').hidden = true;
+  }
+
+  function renderExportMenu() {
+    exportFiles = App.exportFiles();
+    var menu = $('export-menu'), html = '', i, f, total = 0;
+
+    if (!exportFiles.length) {
+      menu.innerHTML = '<p class="exportmenu-empty">Nothing to export yet.<br>' +
+                       'Draw some markers first.</p>';
+      return;
+    }
+
+    html += '<div class="exportmenu-head">One file per marker type</div>';
+    for (i = 0; i < exportFiles.length; i++) {
+      f = exportFiles[i];
+      if (f.name !== 'skeletons.json') total += f.count;
+      html += '<button class="exportrow" data-i="' + i + '">' +
+                '<span class="exportrow-dot"' +
+                  (f.color ? ' style="background:' + f.color + '"' : ' data-blank="1"') + '></span>' +
+                '<span class="exportrow-icon">' + window.svgIcon(f.shape, 14) + '</span>' +
+                '<span class="exportrow-main">' +
+                  '<span class="exportrow-name">' + esc(f.label) + '</span>' +
+                  '<span class="exportrow-sub">' + f.count + ' ' +
+                    (f.name === 'skeletons.json'
+                      ? 'skeleton' + (f.count === 1 ? '' : 's')
+                      : 'marker' + (f.count === 1 ? '' : 's')) +
+                    ' · ' + esc(f.name) + '</span>' +
+                '</span>' +
+                '<span class="exportrow-dl">' + window.svgIcon('download', 15) + '</span>' +
+              '</button>';
+    }
+    html += '<div class="exportmenu-sep"></div>' +
+            '<button class="exportrow all" data-all="1">' +
+              '<span class="exportrow-icon">' + window.svgIcon('download', 15) + '</span>' +
+              '<span class="exportrow-main">' +
+                '<span class="exportrow-name">Download everything</span>' +
+                '<span class="exportrow-sub">' + exportFiles.length + ' files' +
+                  (exportFiles.length > 1 ? ', zipped' : '') + ' · ' + total + ' markers</span>' +
+              '</span>' +
+            '</button>';
+    menu.innerHTML = html;
+  }
 
   /* ============================================================ file intake */
 
@@ -273,9 +362,15 @@
     updateStatus();
     updateChip();
 
-    var has = App.state.images.length > 0;
+    var has = App.state.images.length > 0,
+        needsType = has && !App.state.types.length;
     els.empty.hidden = has;
+    $('onboard').hidden = !needsType;
     $('imgnav').hidden = !has;
+
+    /* the moment there are images but nothing to label them with, put the
+       marker-types panel in front of the user rather than the file list */
+    if (needsType && App.state.panel !== 'markers') { setCollapsed(false); setPanel('markers'); }
   }
 
   function renderFiles() {
@@ -644,6 +739,12 @@
       if (e.key === 'Control' || e.key === 'Meta') {
         if (!App.state.ctrlDown) { App.state.ctrlDown = true; Canvas.updateCursor(); Canvas.render(); }
       }
+      if (e.key === 'Alt' && !App.state.altDown) {
+        App.state.altDown = true; Canvas.refreshHover(); Canvas.render();
+      }
+      if (e.key === 'Shift' && !App.state.shiftDown) {
+        App.state.shiftDown = true; Canvas.refreshHover(); Canvas.render();
+      }
 
       if (modalOpen()) {
         if (e.key === 'Escape') {
@@ -699,6 +800,7 @@
         case 'a': case 'A': setTool('annotate'); break;
         case 'x': case 'X': setTool(App.state.tool === 'delete' ? 'annotate' : 'delete'); break;
         case 'r': case 'R': Canvas.rotateView(); break;
+        case 'l': case 'L': setLocked(!App.state.locked); break;
         case 'f': case 'F': Canvas.fit(); updateStatus(); break;
         case '?': openModal('modal-help'); break;
         case '+': case '=': Canvas.zoomAt(1.25); updateStatus(); break;
@@ -738,13 +840,28 @@
         Canvas.updateCursor();
         Canvas.render();
       }
+      if (e.key === 'Alt') {
+        App.state.altDown = false;
+        UI.moveBinCursor(0, 0, false);
+        Canvas.refreshHover();
+        Canvas.render();
+      }
+      if (e.key === 'Shift') {
+        App.state.shiftDown = false;
+        Canvas.refreshHover();
+        Canvas.render();
+      }
       if (e.key === ' ') Canvas.setSpace(false);
     });
 
     window.addEventListener('blur', function () {
       App.state.ctrlDown = false;
+      App.state.altDown = false;
+      App.state.shiftDown = false;
       Canvas.setSpace(false);
       UI.moveBinCursor(0, 0, false);
+      Canvas.refreshHover();
+      Canvas.render();
     });
 
     /* Nothing is stored between sessions, so reloading or closing the tab

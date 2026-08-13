@@ -31,6 +31,10 @@
       <button class="tool" data-tool="delete"   title="Delete (X) — or hold Ctrl"><span data-icon="trash"></span></button>
     </div>
 
+    <div class="toolgroup">
+      <button class="tool" id="btn-lock" data-tip="lock"><span data-icon="unlock"></span></button>
+    </div>
+
     <div class="sep"></div>
 
     <div class="toolgroup">
@@ -50,11 +54,17 @@
 
     <div class="sep"></div>
 
-    <button class="tool" id="btn-help" title="Keyboard shortcuts (?)"><span data-icon="help"></span></button>
-
-    <button class="btn primary" id="btn-export">
-      <span data-icon="download"></span> Export CSV
+    <button class="btn help" id="btn-help" title="How everything works, and every shortcut (?)">
+      <span data-icon="help"></span> Get help
     </button>
+
+    <div class="exportwrap" id="exportwrap">
+      <button class="btn primary" id="btn-export">
+        <span data-icon="download"></span> Export
+        <span data-icon="chevdown" class="btn-caret"></span>
+      </button>
+      <div class="exportmenu" id="export-menu" hidden></div>
+    </div>
   </header>
 
   <!-- ───────────────────────── body ───────────────────────── -->
@@ -105,9 +115,27 @@
       <div class="empty" id="empty">
         <div class="empty-inner">
           <span data-icon="images" class="empty-icon"></span>
+          <span class="stepbadge">Step 1 of 2</span>
           <h3>Drop images or a folder here</h3>
           <p>Everything stays in your browser — nothing is uploaded anywhere.</p>
           <button class="btn primary" id="btn-load-2"><span data-icon="upload"></span> Load images</button>
+        </div>
+      </div>
+
+      <!-- images are in, but there is nothing to label them with yet -->
+      <div class="onboard" id="onboard" hidden>
+        <div class="onboard-card">
+          <span class="stepbadge">Step 2 of 2</span>
+          <h3>Now create a marker type</h3>
+          <p>
+            A marker type is one thing you want to label — a species, a behaviour,
+            a region. It decides the shape you draw, its colour, and the number key
+            that switches to it.
+          </p>
+          <div class="onboard-actions">
+            <button class="btn primary" id="onboard-new"><span data-icon="plus"></span> New marker type</button>
+            <button class="btn" id="onboard-help">How it works</button>
+          </div>
         </div>
       </div>
 
@@ -320,7 +348,7 @@
           <dt><kbd>Backspace</kbd></dt><dd>Take back the last vertex</dd>
           <dt><kbd>Esc</kbd></dt><dd>Throw the whole polygon away</dd>
           <dt>Click the <b>+</b> on an edge</dt><dd>Insert a vertex there and drag it straight out</dd>
-          <dt><kbd>Alt</kbd> + click a vertex</dt><dd>Remove that vertex</dd>
+          <dt>Hold <kbd>Alt</kbd></dt><dd>A bin follows the cursor and the vertex under it turns red — click to remove that one. A polygon keeps a minimum of three.</dd>
         </dl>
         <p class="note">On a traced polygon only the vertices near the cursor show their
         handles, so the outline stays readable — all of them are still grabbable.</p>
@@ -348,6 +376,7 @@
           <dt><kbd>A</kbd></dt><dd>Annotate tool</dd>
           <dt><kbd>V</kbd></dt><dd>Select tool — drag a box round several markers</dd>
           <dt><kbd>X</kbd></dt><dd>Delete tool (a latched <kbd>Ctrl</kbd>)</dd>
+          <dt><kbd>L</kbd></dt><dd>Lock existing markers — you then only place new ones, and must hold <kbd>Shift</kbd> to reshape one</dd>
           <dt><kbd>Delete</kbd></dt><dd>Delete everything selected</dd>
           <dt><kbd>Esc</kbd></dt><dd>Clear the selection</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>A</kbd></dt><dd>Select every marker on this image</dd>
@@ -360,8 +389,17 @@
         </dl>
       </section>
 
+      <section>
+        <h4>Exporting</h4>
+        <p class="note" style="margin-top:0">
+          Every marker type gets its own CSV, with only the columns its shape needs.
+          Hover <b>Export</b> to pick a single file, or take everything at once —
+          several files arrive as a ZIP. Types you never drew with are not offered.
+        </p>
+      </section>
+
       <p class="warn">Nothing is saved anywhere. Reloading or closing the tab discards
-      every marker and marker type — export the CSV before you leave.</p>
+      every marker and marker type — export before you leave.</p>
     </div>
     <div class="modal-foot">
       <button class="btn primary" data-close>Got it</button>

@@ -6,7 +6,8 @@ uploaded, no account, no software to install.
 
 ## Use it
 
-Open the hosted page, drop a folder of images on it, draw markers, hit **Export CSV**.
+Open the hosted page, drop a folder of images on it, create a marker type, draw markers,
+hit **Export**. The page walks you through the first two steps.
 
 ## Run it locally
 
@@ -20,7 +21,7 @@ Just open `index.html` in a browser — there is no build step and no dependenci
 
 ## Controls
 
-The `?` button in the top bar lists all of this in the app itself.
+The **Get help** button in the top bar lists all of this in the app itself.
 
 | Action | How |
 | --- | --- |
@@ -36,6 +37,7 @@ The `?` button in the top bar lists all of this in the app itself.
 | Switch marker type | Its hotkey `1`–`0`, or click it in the Markers panel |
 | Previous / next image | `,` and `.` or the arrow keys |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+| Lock existing markers | `L`, or the padlock in the top bar |
 
 Markers are drawn as **outlines with no fill**, and their handles appear on their own as
 soon as the cursor comes near an edge — nothing has to be clicked or selected first.
@@ -46,6 +48,13 @@ hover close enough to it.
 
 The sidebar switches between **Images** and **Marker types** with the two icons on the
 far left. Drag its right edge to resize it; click the active icon to collapse it.
+
+### Locking your work
+
+The padlock in the top bar protects what you have already drawn. With it on, the annotate
+tool only ever places **new** markers — handles do not appear and a stray drag across an
+existing marker cannot reshape it. Hold `Shift` to edit one anyway, for as long as you hold
+it. Useful once an image is mostly done and you are filling in the last few animals.
 
 ## Marker types
 
@@ -75,7 +84,8 @@ Afterwards:
 - drag any vertex to move it
 - hover an edge and click the **+** that appears to insert a vertex there, dragging it
   straight out to where you want it
-- `Alt`+click a vertex to remove it (a polygon keeps a minimum of three)
+- hold `Alt` — a bin follows the cursor and the vertex under it turns red; click to remove
+  that one (a polygon keeps a minimum of three)
 
 A traced polygon can carry dozens of vertices spaced about a handle-width apart, so only the
 handles near the cursor are drawn — otherwise the outline disappears under its own dots. Every
@@ -131,33 +141,22 @@ bones stay available, because none of those shift an index.
 
 ## Export
 
-**Export CSV** writes whichever kinds of annotation you actually made. One kind downloads as
-a single file; several are bundled into a ZIP:
+**Every marker type gets its own CSV**, named after the type and carrying only the columns
+that type's shape needs. Hover the **Export** button for a menu listing each file with its
+marker count — click one to download it on its own, or take everything at once. A single file
+downloads directly; several arrive as a ZIP. Types you never drew with are not offered.
 
-| File | Written when |
-| --- | --- |
-| `annotations.csv` | any points, rectangles, lines or ellipses |
-| `polygons.csv` | any polygons |
-| `pose.csv` | any poses |
-| `skeletons.json` | any pose types, so the blueprints travel with the data |
+Pose types additionally contribute `skeletons.json`, so the blueprints travel with the data.
 
 All coordinates are **absolute image pixels**, origin at the top-left corner.
 
-### `annotations.csv`
+### Point, rectangle, ellipse and line types
 
 One row per marker.
 
-| Column | Meaning |
-| --- | --- |
-| `image_name`, `image_width`, `image_height` | the source image |
-| `class_name` | the marker type's name |
-| `marker_type` | `point` · `rect` · `line` · `ellipse` |
-| `x`, `y` | see the table below — the meaning depends on the marker type |
-| `w`, `h` | box side lengths / full ellipse axes; empty for points and lines |
-| `x2`, `y2` | the far end of a line; empty otherwise |
-| `angle_deg` | clockwise rotation about the shape's own centre; `0` when not rotatable, empty for points and lines |
+Every file starts with `image_name, image_width, image_height, class_name`, then:
 
-| Marker type | Columns used |
+| Mode | Further columns |
 | --- | --- |
 | `point` | `x`, `y` — the point itself |
 | `rect` | `x`, `y` = top-left corner, `w`, `h`, `angle_deg` |
@@ -168,7 +167,7 @@ For a rotated box or ellipse, `x`, `y`, `w`, `h` describe it **before** rotation
 `angle_deg` turns it about its centre — so the four numbers stay exact, and at
 `angle_deg = 0` they are simply the axis-aligned bounding box.
 
-### `polygons.csv`
+### Polygon types
 
 **One row per vertex** — a variable number of vertices does not belong in a variable number
 of columns, and this shape pivots in one line of pandas.
@@ -182,7 +181,7 @@ of columns, and this shape pivots in one line of pandas.
 | `vertex_index` | 0-based, in drawing order |
 | `x`, `y` | the vertex |
 
-### `pose.csv`
+### Pose types
 
 **One row per keypoint**, with the instance's box repeated. Wide format would break the
 moment two skeletons have different keypoint counts.
@@ -206,11 +205,13 @@ horizontally-flipped training images teach the model that left flippers are righ
 
 YOLO wants `class_id cx cy w h` normalised to 0–1, one `.txt` per image:
 
+Because each box type is its own file, concatenate the ones you want to train on:
+
 ```python
+import glob
 import pandas as pd
 
-df = pd.read_csv("annotations.csv")
-df = df[df.marker_type == "rect"]
+df = pd.concat(pd.read_csv(f) for f in ["seal.csv", "bird.csv"])   # your box types
 classes = sorted(df.class_name.unique())
 
 for name, g in df.groupby("image_name"):
@@ -230,7 +231,7 @@ boxes, either widen them to their bounding box first or use an oriented-box mode
 Segmentation — `class_id x1 y1 x2 y2 …`, normalised, one line per polygon:
 
 ```python
-df = pd.read_csv("polygons.csv")
+df = pd.read_csv("kelp.csv")
 classes = sorted(df.class_name.unique())
 
 for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
@@ -263,7 +264,7 @@ Pose — `class_id cx cy w h  px py v  px py v …`, all normalised:
 
 ```python
 import json
-df = pd.read_csv("pose.csv")
+df = pd.read_csv("seal_pose.csv")
 skeletons = json.load(open("skeletons.json"))
 classes = sorted(df.class_name.unique())
 
