@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annotator — ICYMARE 26</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ───────────────────────── top bar ───────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">Annotator</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <button class="btn" id="btn-load">
+      <span data-icon="upload"></span> Load images
+    </button>
+
+    <div class="sep"></div>
+
+    <div class="toolgroup" id="toolgroup">
+      <button class="tool" data-tool="annotate" title="Annotate (A)"><span data-icon="crosshair"></span></button>
+      <button class="tool" data-tool="select"   title="Select (V)"><span data-icon="pointer"></span></button>
+      <button class="tool" data-tool="delete"   title="Delete (X) — or hold Ctrl"><span data-icon="trash"></span></button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="toolgroup">
+      <button class="tool" id="btn-zoom-out" title="Zoom out (−)"><span data-icon="zoomout"></span></button>
+      <button class="tool wide" id="btn-zoom-level" title="Reset to 100%">100%</button>
+      <button class="tool" id="btn-zoom-in" title="Zoom in (+)"><span data-icon="zoomin"></span></button>
+      <button class="tool" id="btn-fit" title="Fit to screen (F)"><span data-icon="fit"></span></button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="imgnav" id="imgnav" hidden>
+      <button class="tool" id="btn-prev" title="Previous image (,)"><span data-icon="chevleft"></span></button>
+      <span class="imgnav-label" id="imgnav-label">0 / 0</span>
+      <button class="tool" id="btn-next" title="Next image (.)"><span data-icon="chevright"></span></button>
+    </div>
+
+    <div class="sep"></div>
+
+    <button class="btn primary" id="btn-export">
+      <span data-icon="download"></span> Export CSV
+    </button>
+  </header>
+
+  <!-- ───────────────────────── body ───────────────────────── -->
+  <div class="body">
+
+    <nav class="rail">
+      <button class="rail-btn" data-panel="files" title="Images"><span data-icon="images"></span></button>
+      <button class="rail-btn" data-panel="markers" title="Marker types"><span data-icon="tag"></span></button>
+    </nav>
+
+    <aside class="sidebar" id="sidebar">
+
+      <!-- Files panel -->
+      <section class="panel" data-panel="files">
+        <div class="panel-head">
+          <h2>Images</h2>
+          <div class="panel-actions">
+            <button class="iconbtn" id="btn-add-files" title="Add image files"><span data-icon="plus"></span></button>
+            <button class="iconbtn" id="btn-add-folder" title="Add a folder"><span data-icon="folder"></span></button>
+          </div>
+        </div>
+        <div class="panel-body" id="file-list"></div>
+        <div class="panel-foot" id="file-foot">No images loaded</div>
+      </section>
+
+      <!-- Markers panel -->
+      <section class="panel" data-panel="markers">
+        <div class="panel-head">
+          <h2>Marker types</h2>
+          <div class="panel-actions">
+            <button class="iconbtn" id="btn-new-type" title="New marker type"><span data-icon="plus"></span></button>
+          </div>
+        </div>
+        <div class="panel-body" id="type-list"></div>
+        <div class="panel-foot">
+          <button class="btn block" id="btn-new-type-2"><span data-icon="plus"></span> New marker type</button>
+        </div>
+      </section>
+
+    </aside>
+
+    <div class="resizer" id="resizer"></div>
+
+    <!-- ───────────────────────── stage ───────────────────────── -->
+    <main class="stage" id="stage">
+      <canvas id="canvas"></canvas>
+
+      <div class="empty" id="empty">
+        <div class="empty-inner">
+          <span data-icon="images" class="empty-icon"></span>
+          <h3>Drop images or a folder here</h3>
+          <p>Everything stays in your browser — nothing is uploaded anywhere.</p>
+          <button class="btn primary" id="btn-load-2"><span data-icon="upload"></span> Load images</button>
+        </div>
+      </div>
+
+      <div class="dropzone" id="dropzone"><div class="dropzone-inner">Drop to add images</div></div>
+
+      <div class="hint" id="active-type-chip" hidden></div>
+
+      <footer class="statusbar" id="statusbar">
+        <span id="st-name">—</span>
+        <span id="st-dims"></span>
+        <span id="st-cursor"></span>
+        <span class="spacer"></span>
+        <span id="st-count"></span>
+        <span id="st-sel"></span>
+      </footer>
+    </main>
+
+  </div>
+</div>
+
+<!-- floating bin cursor -->
+<div class="bincursor" id="bincursor" hidden><span data-icon="trash"></span></div>
+
+<!-- hidden inputs -->
+<input type="file" id="input-files" accept="image/*" multiple hidden>
+<input type="file" id="input-folder" accept="image/*" multiple webkitdirectory hidden>
+
+<!-- ───────────────────────── modals ───────────────────────── -->
+<div class="modal-root" id="modal-root" hidden>
+  <div class="modal-backdrop" data-close></div>
+
+  <!-- marker type editor -->
+  <div class="modal" id="modal-type" hidden>
+    <div class="modal-head">
+      <h3 id="modal-type-title">New marker type</h3>
+      <button class="iconbtn" data-close><span data-icon="x"></span></button>
+    </div>
+    <div class="modal-body">
+
+      <label class="field">
+        <span class="field-label">Name</span>
+        <input type="text" id="f-name" placeholder="e.g. Seal" autocomplete="off" maxlength="60">
+      </label>
+
+      <div class="field">
+        <span class="field-label">Mode</span>
+        <div class="shapegrid" id="f-shape">
+          <button type="button" class="shapeopt" data-shape="point">
+            <span data-icon="point"></span><span>Point</span>
+          </button>
+          <button type="button" class="shapeopt" data-shape="rect">
+            <span data-icon="rect"></span><span>Rectangle</span>
+          </button>
+          <button type="button" class="shapeopt" data-shape="line">
+            <span data-icon="line"></span><span>Line</span>
+          </button>
+          <button type="button" class="shapeopt" data-shape="ellipse">
+            <span data-icon="ellipse"></span><span>Ellipse</span>
+          </button>
+        </div>
+      </div>
+
+      <label class="check" id="f-rotatable-wrap">
+        <input type="checkbox" id="f-rotatable">
+        <span class="check-box"><span data-icon="check"></span></span>
+        <span class="check-text">
+          Allow rotation
+          <small>Adds a rotation handle; the angle is written to the CSV.</small>
+        </span>
+      </label>
+
+      <div class="field">
+        <span class="field-label">Colour</span>
+        <div class="swatches" id="f-swatches"></div>
+        <div class="hexrow">
+          <span class="hexpreview" id="f-hexpreview"></span>
+          <input type="text" id="f-hex" spellcheck="false" maxlength="7" placeholder="#4c9aff">
+          <input type="color" id="f-picker" title="Colour picker">
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Hotkey</span>
+        <div class="keygrid" id="f-keys"></div>
+      </div>
+
+      <p class="formerror" id="f-error" hidden></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="f-save">Create</button>
+    </div>
+  </div>
+
+  <!-- generic confirm -->
+  <div class="modal small" id="modal-confirm" hidden>
+    <div class="modal-head">
+      <h3 id="confirm-title">Are you sure?</h3>
+      <button class="iconbtn" data-close><span data-icon="x"></span></button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-text" class="confirm-text"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn danger" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/icons.js"></script>
+<script src="js/core.js"></script>
+<script src="js/canvas.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
