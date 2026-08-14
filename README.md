@@ -1,23 +1,19 @@
-# Annotator — ICYMARE 26
+# icymare26-annotation
 
 A zero-install image annotation tool for the "Machine Learning & YOLO for wildlife data"
-workshop. It is a static web page: **every image stays in your browser**, nothing is
-uploaded, no account, no software to install.
+workshop at ICYMARE 2026. It is a static web page: **every image stays in your browser**,
+nothing is uploaded, no account, no software to install.
 
 ## Use it
 
-Open the hosted page, drop a folder of images on it, create a marker type, draw markers,
-hit **Export**. The page walks you through the first two steps.
+### 👉 [johannes-bartl.github.io/icymare26-annotation](https://johannes-bartl.github.io/icymare26-annotation/)
+
+Drop a folder of images on it, create a marker type, draw markers, hit **Export**.
+The page walks you through the first two steps.
 
 ## Run it locally
 
 Just open `index.html` in a browser — there is no build step and no dependencies.
-
-## Host it on GitHub Pages
-
-1. Push this folder to a GitHub repository.
-2. *Settings → Pages → Build and deployment → Deploy from a branch*, branch `main`, folder `/ (root)`.
-3. The page appears at `https://<user>.github.io/<repo>/` after a minute.
 
 ## Controls
 
@@ -212,89 +208,6 @@ moment two skeletons have different keypoint counts.
 One entry per pose type, holding its blueprint plus `kpt_shape` and `flip_idx` ready for
 ultralytics. `flip_idx` is the permutation that maps each keypoint to its mirror — without it,
 horizontally-flipped training images teach the model that left flippers are right flippers.
-
-### Converting to YOLO
-
-YOLO wants `class_id cx cy w h` normalised to 0–1, one `.txt` per image:
-
-Every rectangle type is already in one file, and `class_name` becomes the class id:
-
-```python
-import pandas as pd
-
-df = pd.read_csv("rectangles.csv")
-classes = sorted(df.class_name.unique())
-
-for name, g in df.groupby("image_name"):
-    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
-    lines = [
-        f"{classes.index(r.class_name)} "
-        f"{(r.x + r.w / 2) / W:.6f} {(r.y + r.h / 2) / H:.6f} "
-        f"{r.w / W:.6f} {r.h / H:.6f}"
-        for _, r in g.iterrows()
-    ]
-    open(name.rsplit(".", 1)[0] + ".txt", "w").write("\n".join(lines))
-```
-
-(YOLO boxes are axis-aligned, so this assumes `angle_deg` is 0. If you annotate rotated
-boxes, either widen them to their bounding box first or use an oriented-box model.)
-
-Segmentation — `class_id x1 y1 x2 y2 …`, normalised, one line per polygon:
-
-```python
-df = pd.read_csv("polygons.csv")
-classes = sorted(df.class_name.unique())
-
-for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
-    g = g.sort_values("vertex_index")
-    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
-    coords = " ".join(f"{x / W:.6f} {y / H:.6f}" for x, y in zip(g.x, g.y))
-    with open(img.rsplit(".", 1)[0] + ".txt", "a") as f:
-        f.write(f"{classes.index(g.class_name.iloc[0])} {coords}\n")
-```
-
-To get **pixel masks** instead, rasterise the same polygons — you never need the brush:
-
-```python
-import numpy as np
-from PIL import Image, ImageDraw
-
-for img, g in df.groupby("image_name"):
-    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
-    mask = Image.new("L", (W, H), 0)
-    for _, inst in g.groupby("instance_id", sort=False):
-        inst = inst.sort_values("vertex_index")
-        ImageDraw.Draw(mask).polygon(
-            list(zip(inst.x, inst.y)),
-            fill=classes.index(inst.class_name.iloc[0]) + 1,   # 0 stays background
-        )
-    mask.save(img.rsplit(".", 1)[0] + "_mask.png")
-```
-
-Pose — `class_id cx cy w h  px py v  px py v …`, all normalised:
-
-```python
-import json
-df = pd.read_csv("poses.csv")
-skeletons = json.load(open("skeletons.json"))
-classes = sorted(df.class_name.unique())
-
-for (img, inst), g in df.groupby(["image_name", "instance_id"], sort=False):
-    g = g.sort_values("keypoint_index")
-    W, H = g.image_width.iloc[0], g.image_height.iloc[0]
-    b = g.iloc[0]
-    box = (f"{(b.box_x + b.box_w / 2) / W:.6f} {(b.box_y + b.box_h / 2) / H:.6f} "
-           f"{b.box_w / W:.6f} {b.box_h / H:.6f}")
-    kps = " ".join(
-        f"{0 if r.visibility == 0 else r.x / W:.6f} "
-        f"{0 if r.visibility == 0 else r.y / H:.6f} {int(r.visibility)}"
-        for r in g.itertuples()
-    )
-    with open(img.rsplit(".", 1)[0] + ".txt", "a") as f:
-        f.write(f"{classes.index(b.class_name)} {box} {kps}\n")
-```
-
-The matching `data.yaml` takes `kpt_shape` and `flip_idx` straight out of `skeletons.json`.
 
 ## Notes
 
