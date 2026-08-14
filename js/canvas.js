@@ -1073,6 +1073,7 @@
     if (pending) { pending.tracing = false; return; }
     if (!drag) return;
     var d = drag, img = App.activeImage();
+    if (d.mode === 'resize' && d.m) enforceMinSize(d.m);
     drag = null;
 
     if (d.mode === 'create') {
@@ -1157,37 +1158,64 @@
         if (m.kps[k][2] === App.VIS.ABSENT) m.kps[k][2] = App.VIS.VISIBLE;
         return;
       }
-      /* box corner — the keypoints stay put, the box is only the animal's extent */
+      /* box corner — the keypoints stay put, the box is only the animal's extent.
+         Corners may cross past each other, same as a rectangle. */
       var left = o.cx - o.w / 2, right = o.cx + o.w / 2,
-          top = o.cy - o.h / 2, bottom = o.cy + o.h / 2;
-      if (id.indexOf('w') !== -1) left = Math.min(ip.x, right - MIN_SIZE);
-      if (id.indexOf('e') !== -1) right = Math.max(ip.x, left + MIN_SIZE);
-      if (id.indexOf('n') !== -1) top = Math.min(ip.y, bottom - MIN_SIZE);
-      if (id.indexOf('s') !== -1) bottom = Math.max(ip.y, top + MIN_SIZE);
+          top = o.cy - o.h / 2, bottom = o.cy + o.h / 2, sp;
+      if (id.indexOf('w') !== -1) left = ip.x;
+      if (id.indexOf('e') !== -1) right = ip.x;
+      if (id.indexOf('n') !== -1) top = ip.y;
+      if (id.indexOf('s') !== -1) bottom = ip.y;
+      if (left > right) { sp = left; left = right; right = sp; }
+      if (top > bottom) { sp = top; top = bottom; bottom = sp; }
       m.cx = (left + right) / 2; m.cy = (top + bottom) / 2;
       m.w = right - left; m.h = bottom - top;
       return;
     }
 
+    /*
+     * Edges are allowed to cross straight past each other: drag the top-right
+     * handle down past the bottom edge and the box simply flips, rather than
+     * jamming against its opposite side. Nothing downstream ever sees an
+     * inverted box — the spans are normalised before the marker is written,
+     * so w and h stay positive and x,y stays the top-left corner.
+     */
     var l = App.toLocal(ip.x, ip.y, o.cx, o.cy, o.angle || 0),
         left = -o.w / 2, right = o.w / 2, top = -o.h / 2, bottom = o.h / 2,
-        ratio = o.h ? o.w / o.h : 1, nw, nh, world;
+        ratio = o.h ? o.w / o.h : 1,
+        dragL = id.indexOf('w') !== -1, dragR = id.indexOf('e') !== -1,
+        dragT = id.indexOf('n') !== -1, dragB = id.indexOf('s') !== -1,
+        sw, sh, aw, ah, swap, world;
 
-    if (id.indexOf('w') !== -1) left = Math.min(l.x, right - MIN_SIZE);
-    if (id.indexOf('e') !== -1) right = Math.max(l.x, left + MIN_SIZE);
-    if (id.indexOf('n') !== -1) top = Math.min(l.y, bottom - MIN_SIZE);
-    if (id.indexOf('s') !== -1) bottom = Math.max(l.y, top + MIN_SIZE);
-
-    nw = right - left; nh = bottom - top;
+    if (dragL) left = l.x;
+    if (dragR) right = l.x;
+    if (dragT) top = l.y;
+    if (dragB) bottom = l.y;
 
     if (keepRatio && id.length === 2) {
-      if (nw / nh > ratio) nw = nh * ratio; else nh = nw / ratio;
-      if (id.indexOf('w') !== -1) left = right - nw; else right = left + nw;
-      if (id.indexOf('n') !== -1) top = bottom - nh; else bottom = top + nh;
+      sw = right - left; sh = bottom - top;
+      aw = Math.abs(sw); ah = Math.abs(sh) || 1;
+      if (aw / ah > ratio) aw = ah * ratio; else ah = aw / ratio;
+      /* grow away from whichever edge is anchored, keeping the drag direction */
+      if (dragL) left = right - sign(sw) * aw; else right = left + sign(sw) * aw;
+      if (dragT) top = bottom - sign(sh) * ah; else bottom = top + sign(sh) * ah;
     }
 
+    if (left > right) { swap = left; left = right; right = swap; }
+    if (top > bottom) { swap = top; top = bottom; bottom = swap; }
+
     world = App.toWorld((left + right) / 2, (top + bottom) / 2, o.cx, o.cy, o.angle || 0);
-    m.cx = world.x; m.cy = world.y; m.w = nw; m.h = nh;
+    m.cx = world.x; m.cy = world.y;
+    m.w = right - left; m.h = bottom - top;
+  }
+
+  function sign(v) { return v < 0 ? -1 : 1; }
+
+  /** A box collapsed to nothing mid-drag is fine; one left that way is not. */
+  function enforceMinSize(m) {
+    if (m.shape !== 'rect' && m.shape !== 'ellipse' && m.shape !== 'pose') return;
+    if (m.w < MIN_SIZE) m.w = MIN_SIZE;
+    if (m.h < MIN_SIZE) m.h = MIN_SIZE;
   }
 
   function applyBand() {

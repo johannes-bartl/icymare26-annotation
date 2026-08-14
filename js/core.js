@@ -1,5 +1,5 @@
-﻿/* ============================================================================
-   core.js â€” application state, geometry helpers, persistence, CSV export.
+/* ============================================================================
+   core.js — application state, geometry helpers, persistence, CSV export.
    All marker coordinates are stored in ABSOLUTE IMAGE PIXELS (origin top-left).
    ========================================================================== */
 (function () {
@@ -180,7 +180,7 @@
     return inside;
   };
 
-  /** Rotate (px,py) around (ox,oy) by -angleDeg â€” i.e. into the marker's local frame. */
+  /** Rotate (px,py) around (ox,oy) by -angleDeg — i.e. into the marker's local frame. */
   App.toLocal = function (px, py, ox, oy, angleDeg) {
     var a = -App.deg2rad(angleDeg || 0),
         dx = px - ox, dy = py - oy,
@@ -226,12 +226,12 @@
     m.cx += dx; m.cy += dy;
   };
 
-  /** Lay a type's template pose inside a box â€” the pre-posed skeleton. */
+  /** Lay a type's template pose inside a box — the pre-posed skeleton. */
   App.makePose = function (type, x, y, w, h) {
     var sk = type.skeleton, kps = [], i, k;
     for (i = 0; i < sk.keypoints.length; i++) {
       k = sk.keypoints[i];
-      /* [x, y, visibility, touched] â€” `touched` is UI-only and never exported */
+      /* [x, y, visibility, touched] — `touched` is UI-only and never exported */
       kps.push([x + k.tx * w, y + k.ty * h, App.VIS.VISIBLE, 0]);
     }
     return {
@@ -554,10 +554,13 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   };
 
-  /** A BOM keeps Excel from mangling non-ASCII class names. */
+  /* A BOM keeps Excel from mangling non-ASCII class names. Built from its code
+     point rather than written literally, so no encoding round-trip can mangle it. */
+  var BOM = String.fromCharCode(0xFEFF);
+
   function blobFor(file) {
     return /\.csv$/.test(file.name)
-      ? new Blob(['ï»¿' + file.text], { type: 'text/csv;charset=utf-8' })
+      ? new Blob([BOM + file.text], { type: 'text/csv;charset=utf-8' })
       : new Blob([file.text], { type: 'application/json;charset=utf-8' });
   }
 
@@ -573,7 +576,7 @@
     for (i = 0; i < files.length; i++) {
       entries.push({
         name: files[i].name,
-        text: /\.csv$/.test(files[i].name) ? 'ï»¿' + files[i].text : files[i].text
+        text: /\.csv$/.test(files[i].name) ? BOM + files[i].text : files[i].text
       });
     }
     App.download(window.Zip.create(entries), 'annotations_' + App.stamp() + '.zip');
