@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fish">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5aa7ff"/>
+      <stop offset="1" stop-color="#8b7bff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="#12171f"/>
+
+  <!-- tail, behind the body so the join is hidden -->
+  <path d="M40 32 56 20v24z" fill="#8b7bff"/>
+
+  <!-- body: a leaf shape, snout at the left -->
+  <path d="M8 32C16 17 36 15 46 32 36 49 16 47 8 32z" fill="url(#body)"/>
+
+  <!-- dorsal fin: the closing edge sits inside the body so it reads as attached -->
+  <path d="M22 22Q29 7 39 16z" fill="#a9c8ff" opacity=".9"/>
+
+  <circle cx="18" cy="29" r="2.6" fill="#0d1117"/>
+</svg>
