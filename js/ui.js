@@ -473,10 +473,11 @@
     $('st-sel').textContent = App.state.selection.length ? App.state.selection.length + ' selected' : '';
     $('st-rot').textContent = Canvas.view.rot ? 'view rotated ' + (Canvas.view.rot * 90) + '°' : '';
     var pv = Canvas.pendingCount();
-    $('st-hint').textContent = Canvas.hasPending()
-      ? pv + (pv === 1 ? ' vertex' : ' vertices') +
-        (pv >= 3 ? ' · click the first point, or Enter, to close' : ' · keep clicking') + ' · Esc cancels'
-      : '';
+    $('st-hint').textContent = !Canvas.hasPending() ? ''
+      : Canvas.pendingIsLine()
+        ? 'Click the far end of the line · Esc cancels'
+        : pv + (pv === 1 ? ' vertex' : ' vertices') +
+          (pv >= 3 ? ' · click the first point, or Enter, to close' : ' · keep clicking') + ' · Esc cancels';
     $('imgnav-label').textContent = (idx + 1) + ' / ' + n;
     $('btn-zoom-level').textContent = Math.round(Canvas.view.scale * 100) + '%';
   }

@@ -364,6 +364,20 @@
   function drawPending() {
     var color = pending.type.color, i, p, first, closable;
 
+    if (pending.line) {
+      var a = toScreen(pending.pts[0][0], pending.pts[0][1]),
+          b = pending.cursor ? toScreen(pending.cursor.x, pending.cursor.y) : a;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(a.x, a.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = '#0e1116'; ctx.lineWidth = 1.5; ctx.stroke();
+      return;
+    }
+
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -880,6 +894,19 @@
   /* ------------------------------------------------------ polygon building */
 
   function addPendingVertex(p, ip) {
+    /* two-click line: this click is the far end */
+    if (pending.line) {
+      var s0 = pending.pts[0], type = pending.type;
+      pending = null;
+      if (Math.hypot(ip.x - s0[0], ip.y - s0[1]) < MIN_SIZE) { refresh(); return; }
+      var ln = { id: App.uid('m'), typeId: type.id, shape: 'line', angle: 0,
+                 x1: s0[0], y1: s0[1], x2: ip.x, y2: ip.y };
+      App.addMarker(ln);
+      hoverEdgeId = ln.id;
+      refresh();
+      return;
+    }
+
     var first = toScreen(pending.pts[0][0], pending.pts[0][1]);
     if (pending.pts.length >= 3 && Math.hypot(p.x - first.x, p.y - first.y) <= CLOSE_TOL) {
       Canvas.commitPending();
@@ -896,6 +923,9 @@
 
   Canvas.commitPending = function () {
     if (!pending) return false;
+    /* a half-placed line has nothing to close — Enter and double-click leave
+       it waiting for its far end rather than quietly dropping it */
+    if (pending.line) return false;
     var pts = pending.pts, type = pending.type;
     pending = null;
     if (pts.length < 3) { refresh(); return false; }
@@ -923,6 +953,9 @@
 
   Canvas.pendingCount = function () { return pending ? pending.pts.length : 0; };
 
+  /** True while a two-click line is waiting for its far end. */
+  Canvas.pendingIsLine = function () { return !!(pending && pending.line); };
+
   function onPointerMove(e) {
     var p = evPos(e), ip = toImage(p.x, p.y), img = App.activeImage();
     lastPointer = p;
@@ -947,7 +980,7 @@
       pending.cursor = ip;
       /* holding the button down traces a run of vertices along the drag —
          click for a corner, drag for a curve */
-      if (pending.tracing && (e.buttons & 1)) {
+      if (pending.tracing && !pending.line && (e.buttons & 1)) {
         var last = pending.pts[pending.pts.length - 1],
             ls = toScreen(last[0], last[1]);
         if (Math.hypot(p.x - ls.x, p.y - ls.y) >= TRACE_STEP) {
@@ -1099,6 +1132,15 @@
     if (d.mode === 'create') {
       var m = d.preview, b, c;
       if (d.type.shape === 'point') m = buildShape(d.type, d.sx, d.sy, d.sx, d.sy, false);
+
+      /* A line released without a drag is a click, not a discarded stroke:
+         start a two-click line and wait for the second point. */
+      if (d.type.shape === 'line' && tooSmall(m)) {
+        pending = { type: d.type, pts: [[d.sx, d.sy]], cursor: { x: d.sx, y: d.sy }, line: true };
+        refresh();
+        return;
+      }
+
       if (!m) { refresh(); return; }
       if (d.type.shape !== 'point') {
         b = App.bboxOf(m);
@@ -1141,6 +1183,13 @@
   }
 
   /* ------------------------------------------------------------- building */
+
+  /** True when a drag never really moved — i.e. it was a click. */
+  function tooSmall(m) {
+    if (!m) return true;
+    var b = App.bboxOf(m);
+    return (b.x2 - b.x1) < MIN_SIZE && (b.y2 - b.y1) < MIN_SIZE;
+  }
 
   function buildShape(type, x0, y0, x1, y1, square) {
     var m = { id: App.uid('m'), typeId: type.id, shape: type.shape, angle: 0 }, w, h, s;

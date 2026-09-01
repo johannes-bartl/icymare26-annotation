@@ -61,13 +61,19 @@ A marker type is one annotation class: a name, a colour, an optional hotkey, and
 | --- | --- | --- |
 | Point | a single click | – |
 | Rectangle | dragging corner to corner (Shift = square) | optional |
-| Line | dragging from start to end | – |
+| Line | dragging end to end, or clicking one end then the other | – |
 | Ellipse | dragging out its bounding box (Shift = circle) | optional |
 | Polygon | clicking each vertex, then the first one to close | – |
 | Pose | dragging a box, which fills with the type's skeleton | – |
 
 Deleting a marker type also deletes every marker placed with it; the confirmation dialog
 tells you how many.
+
+### Lines
+
+Drag from one end to the other, or **click once for each end**. The two-click form is the
+easier one when the ends are far apart, since you can pan between the clicks. `Esc` abandons
+a line still waiting for its far end.
 
 ### Polygons
 
