@@ -122,6 +122,7 @@
     $('btn-lock').addEventListener('click', function () { setLocked(!App.state.locked); });
     $('onboard-new').addEventListener('click', function () { openTypeEditor(null); });
     $('onboard-help').addEventListener('click', function () { openModal('modal-help'); });
+    $('onboard-skip').addEventListener('click', function () { App.state.onboarded = true; refresh(); });
     wireExport();
 
     $('btn-new-type').addEventListener('click', function () { openTypeEditor(null); });
@@ -385,8 +386,10 @@
     updateStatus();
     updateChip();
 
+    /* The prompt is a first-run signpost, not a warning: once it has been
+       answered it stays gone, even if every marker type is later deleted. */
     var has = App.state.images.length > 0,
-        needsType = has && !App.state.types.length;
+        needsType = has && !App.state.types.length && !App.state.onboarded;
     els.empty.hidden = has;
     $('onboard').hidden = !needsType;
     $('imgnav').hidden = !has;

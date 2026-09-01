@@ -22,7 +22,8 @@
     altDown: false,
     shiftDown: false,
     panel: 'files',
-    sidebarCollapsed: false
+    sidebarCollapsed: false,
+    onboarded: false   // the first-run prompt has been answered, one way or another
   };
 
   App.SHAPES = ['point', 'rect', 'line', 'ellipse', 'polygon', 'pose'];

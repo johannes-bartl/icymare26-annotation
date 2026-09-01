@@ -745,3 +745,6 @@ select:focus { border-color: var(--accent); }
 .file-row:hover .file-del,
 .file-row:focus-within .file-del,
 .file-row:focus-visible .file-del { opacity: 1; }
+
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--panel-2); border-color: var(--border-2); color: var(--text); }
