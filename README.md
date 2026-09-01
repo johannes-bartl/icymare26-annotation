@@ -144,13 +144,11 @@ bones stay available, because none of those shift an index.
 
 ## Properties
 
-While you draw or drag a marker — and whenever exactly one is selected — a readout above it
-shows its geometry in absolute image pixels, the same numbers the export writes.
-
 Each marker type in the sidebar has an arrow that opens **the markers placed with it**,
 grouped by image. Clicking one jumps to its image, selects it and centres the view; selecting
 a marker on the canvas opens its row in the sidebar. The selected marker's row expands into
-number fields you can type into.
+number fields you can type into, in absolute image pixels — the same numbers the export
+writes.
 
 | Mode | Editable | Also shown |
 | --- | --- | --- |
