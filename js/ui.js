@@ -381,8 +381,16 @@
 
   UI.refresh = refresh;
   function refresh() {
+    /* Selecting a marker on the canvas opens its type in the sidebar, so the
+       properties are where you would look for them without a second click. */
+    var sel = App.state.selection, m;
+    if (sel.length === 1) {
+      m = App.getMarker(sel[0]);
+      if (m) App.state.expanded[m.typeId] = true;
+    }
     renderFiles();
     renderTypes();
+    revealSelectedInstance();
     updateStatus();
     updateChip();
 
@@ -419,7 +427,28 @@
       : 'No images loaded';
   }
 
+  /** Keep the highlighted instance row on screen when it changes off-list. */
+  function revealSelectedInstance() {
+    var row = els.typeList.querySelector('.inst-row.active');
+    if (!row || els.typeList.contains(document.activeElement)) return;
+    var lb = els.typeList.getBoundingClientRect(), rb = row.getBoundingClientRect();
+    if (rb.top < lb.top || rb.bottom > lb.bottom) {
+      row.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
   function renderTypes() {
+    /* Rebuilding the list would tear out the number field being typed into.
+       Skipping the render instead would freeze the whole list for as long as
+       the field keeps focus, so put the caret back afterwards — keeping the
+       text as typed, since "45" on the way to "450" is not the model value. */
+    var ae = document.activeElement, keep = null, box;
+    if (els.typeList.contains(ae) && ae.tagName === 'INPUT') {
+      box = ae.closest('.inst-fields');
+      if (box) keep = { mid: box.dataset.mid, key: ae.dataset.key, value: ae.value,
+                        start: ae.selectionStart, end: ae.selectionEnd };
+    }
+
     /* Only the annotate tool places markers, so only then does a type being
        "active" mean anything — highlighting one while selecting or deleting
        just suggests it is about to be used. */
@@ -427,7 +456,11 @@
     for (i = 0; i < s.types.length; i++) {
       t = s.types[i];
       n = App.countOfType(t.id);
+      var open = !!s.expanded[t.id];
       html += '<div class="type-row' + (drawing && t.id === s.activeTypeId ? ' active' : '') + '" data-id="' + t.id + '">' +
+                '<button class="twisty' + (open ? ' open' : '') + '" data-act="expand"' +
+                  (n ? '' : ' disabled') + ' title="' + (n ? 'Show the markers placed' : 'Nothing placed yet') +
+                  '">' + window.svgIcon('chevright', 12) + '</button>' +
                 '<span class="type-dot" style="background:' + t.color + '"></span>' +
                 '<span class="type-shape" title="' + App.SHAPE_LABEL[t.shape] +
                   (t.rotatable ? ' (rotatable)' : '') + '">' + window.svgIcon(t.shape, 16) + '</span>' +
@@ -437,18 +470,114 @@
                     t.skeleton.keypoints.length + 'kp</span>' : '') +
                 (t.rotatable ? '<span class="type-rot" title="Rotatable">' + window.svgIcon('rotate', 13) + '</span>' : '') +
                 '<span class="pill count" title="markers placed">' + n + '</span>' +
-                '<span class="key' + (t.hotkey ? '' : ' none') + '">' + (t.hotkey || '–') + '</span>' +
+                (t.hotkey ? '<span class="key">' + t.hotkey + '</span>' : '') +
                 '<button class="iconbtn tiny" data-act="edit" title="Edit">' + window.svgIcon('edit', 14) + '</button>' +
                 '<button class="iconbtn tiny danger" data-act="del" title="Delete type">' + window.svgIcon('trash', 14) + '</button>' +
               '</div>';
+      if (open && n) html += renderInstances(t);
     }
     els.typeList.innerHTML = html || '<p class="panel-empty">No marker types yet.<br>Create one to start annotating.</p>';
+
+    if (keep) {
+      var back = els.typeList.querySelector(
+        '.inst-fields[data-mid="' + keep.mid + '"] input[data-key="' + keep.key + '"]');
+      if (back) {
+        back.value = keep.value;
+        back.focus();
+        try { back.setSelectionRange(keep.start, keep.end); } catch (e) { /* not selectable */ }
+      }
+    }
+  }
+
+  /* ------------------------------------------------- instances of one type */
+
+  /**
+   * Every marker of a type, grouped under the image it sits on. The selected
+   * one opens into editable fields; the rest stay one line each so a type with
+   * a hundred markers is still scrollable.
+   */
+  function renderInstances(t) {
+    var items = App.instancesOf(t.id), html = '<div class="inst-list">',
+        curImg = null, i, it, sel = App.state.selection, isSel;
+
+    for (i = 0; i < items.length; i++) {
+      it = items[i];
+      if (it.image.id !== curImg) {
+        curImg = it.image.id;
+        html += '<div class="inst-img' + (curImg === App.state.activeImageId ? ' here' : '') + '">' +
+                  esc(it.image.name) + '</div>';
+      }
+      isSel = it.image.id === App.state.activeImageId && sel.length === 1 && sel[0] === it.marker.id;
+      html += '<div class="inst-row' + (isSel ? ' active' : '') + '" data-mid="' + it.marker.id +
+                '" data-img="' + it.image.id + '">' +
+                '<span class="inst-n">#' + it.index + '</span>' +
+                '<span class="inst-sum">' + esc(App.markerSummary(it.marker, t)) + '</span>' +
+              '</div>';
+      if (isSel) html += renderFields(it.marker, t);
+    }
+    return html + '</div>';
+  }
+
+  function renderFields(m, t) {
+    var fields = App.markerFields(m, t), extras = App.markerExtras(m, t),
+        html = '<div class="inst-fields" data-mid="' + m.id + '">', i, f;
+
+    for (i = 0; i < fields.length; i++) {
+      f = fields[i];
+      html += '<label class="propf">' +
+                '<span>' + f.label + '</span>' +
+                '<input type="number" step="' + (f.unit === 'deg' ? '1' : '0.5') + '" ' +
+                  'data-key="' + f.key + '" value="' + App.tidy(App.readField(m, f.key)) + '">' +
+              '</label>';
+    }
+    for (i = 0; i < extras.length; i++) {
+      html += '<div class="propx"><span>' + esc(extras[i].label) + '</span>' +
+              '<b>' + esc(extras[i].value) + '</b></div>';
+    }
+    if (m.shape === 'pose') html += renderKeypointRows(m, t);
+    return html + '</div>';
+  }
+
+  var VIS_LABEL = { 2: 'V', 1: 'O', 0: '-' };
+
+  /**
+   * A pose carries far more than a box, so its keypoints get their own rows:
+   * position and visibility, the same two things the canvas gestures change.
+   */
+  function renderKeypointRows(m, t) {
+    var sk = t && t.skeleton, html = '<div class="kprops">', i, kp, name, v;
+    html += '<div class="kprops-head">Keypoints</div>';
+    for (i = 0; i < m.kps.length; i++) {
+      kp = m.kps[i];
+      name = (sk && sk.keypoints[i]) ? sk.keypoints[i].name : 'point_' + (i + 1);
+      v = kp[2];
+      html += '<div class="kprow' + (kp[3] ? '' : ' untouched') + '" data-kp="' + i + '">' +
+                '<span class="kpname" title="' + esc(name) + '">' + esc(name) + '</span>' +
+                '<input type="number" step="0.5" data-kp-key="x" value="' +
+                  (v === 0 ? '' : App.tidy(kp[0])) + '"' + (v === 0 ? ' disabled' : '') + '>' +
+                '<input type="number" step="0.5" data-kp-key="y" value="' +
+                  (v === 0 ? '' : App.tidy(kp[1])) + '"' + (v === 0 ? ' disabled' : '') + '>' +
+                '<select data-kp-key="v" title="Visible / Occluded / Absent">' +
+                  '<option value="2"' + (v === 2 ? ' selected' : '') + '>V</option>' +
+                  '<option value="1"' + (v === 1 ? ' selected' : '') + '>O</option>' +
+                  '<option value="0"' + (v === 0 ? ' selected' : '') + '>-</option>' +
+                '</select>' +
+              '</div>';
+    }
+    return html + '</div>';
   }
 
   document.addEventListener('click', function (e) {
-    var row = e.target.closest && e.target.closest('.type-row');
+    if (!e.target.closest) return;
+
+    /* pick an instance out of the list: jump to its image and select it */
+    var inst = e.target.closest('.inst-row');
+    if (inst) { gotoInstance(inst.dataset.img, inst.dataset.mid); return; }
+
+    var row = e.target.closest('.type-row');
     if (!row) return;
     var btn = e.target.closest('[data-act]');
+    if (btn && btn.dataset.act === 'expand') { toggleExpanded(row.dataset.id); return; }
     if (btn && btn.dataset.act === 'edit') { openTypeEditor(row.dataset.id); return; }
     if (btn && btn.dataset.act === 'del') { askDeleteType(row.dataset.id); return; }
     Canvas.cancelPending();
@@ -457,6 +586,84 @@
     refresh();
     Canvas.updateCursor();
   });
+
+  function toggleExpanded(typeId) {
+    App.state.expanded[typeId] = !App.state.expanded[typeId];
+    renderTypes();
+  }
+
+  function gotoInstance(imageId, markerId) {
+    if (imageId !== App.state.activeImageId) {
+      Canvas.cancelPending();
+      App.state.activeImageId = imageId;
+      App.state.selection = [markerId];
+      Canvas.showImage(App.activeImage(), function () {
+        Canvas.focusMarker(App.getMarker(markerId));
+        refresh();
+      });
+      refresh();
+      return;
+    }
+    App.state.selection = [markerId];
+    Canvas.focusMarker(App.getMarker(markerId));
+    refresh();
+  }
+
+  /* ------------------------------------------------- editing one instance */
+
+  var propUndoArmed = false;
+
+  /* One undo entry per editing session, not one per keystroke. */
+  els_on('focusin', '.inst-fields input', function () {
+    if (!propUndoArmed) { App.pushUndo(); propUndoArmed = true; }
+  });
+  els_on('focusout', '.inst-fields input', function () {
+    propUndoArmed = false;
+    renderTypes();                      // clamping may have moved sibling values
+  });
+
+  /* Typing updates the canvas live, but must not rebuild the list underfoot. */
+  els_on('input', '.inst-fields input', function (e) {
+    var box = e.target.closest('.inst-fields'),
+        m = App.getMarker(box.dataset.mid);
+    if (!m) return;
+    if (!App.writeField(m, e.target.dataset.key, parseFloat(e.target.value), App.activeImage())) return;
+    App.save();
+    Canvas.render();
+    updateStatus();
+  });
+
+  els_on('input', '.kprow input', function (e) {
+    var row = e.target.closest('.kprow'),
+        m = App.getMarker(row.closest('.inst-fields').dataset.mid),
+        v = parseFloat(e.target.value), k;
+    if (!m || !isFinite(v)) return;
+    k = m.kps[+row.dataset.kp];
+    k[e.target.dataset.kpKey === 'x' ? 0 : 1] = v;
+    k[3] = 1;                                   // typing a position confirms it
+    App.save();
+    Canvas.render();
+  });
+
+  els_on('change', '.kprow select', function (e) {
+    var row = e.target.closest('.kprow'),
+        m = App.getMarker(row.closest('.inst-fields').dataset.mid), k;
+    if (!m) return;
+    App.pushUndo();
+    k = m.kps[+row.dataset.kp];
+    k[2] = +e.target.value;
+    k[3] = 1;
+    App.save();
+    Canvas.render();
+    renderTypes();
+  });
+
+  /** Delegate an event to a selector, since the rows are rebuilt constantly. */
+  function els_on(type, selector, fn) {
+    document.addEventListener(type, function (e) {
+      if (e.target.closest && e.target.closest(selector)) fn(e);
+    }, type === 'focusin' || type === 'focusout' ? true : false);
+  }
 
   function updateChip() {
     var t = App.activeType();

@@ -401,6 +401,24 @@
       </section>
 
       <section>
+        <h4>Properties</h4>
+        <p class="note" style="margin-top:0">
+          A readout above the marker shows its geometry while you draw or drag it, and
+          whenever exactly one marker is selected — in absolute image pixels, exactly what
+          the export writes.
+        </p>
+        <dl>
+          <dt>The arrow on a marker type</dt><dd>Opens the list of markers placed with it, grouped by image</dd>
+          <dt>Click a listed marker</dt><dd>Jumps to its image, selects it, and centres the view</dd>
+          <dt>Selecting on the canvas</dt><dd>Opens that marker's row in the sidebar, so its fields are where you'd look</dd>
+          <dt>The number fields</dt><dd>Edit the geometry directly. Typing a width grows the shape rightwards — the top-left corner stays put.</dd>
+        </dl>
+        <p class="note">A polygon has no size of its own, so editing its box moves or scales
+        every vertex together. A pose lists each keypoint with its position and whether it is
+        visible, occluded or absent.</p>
+      </section>
+
+      <section>
         <h4>Exporting</h4>
         <p class="note" style="margin-top:0">
           Every marker type gets its own CSV, with only the columns its shape needs.

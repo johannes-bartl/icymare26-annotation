@@ -301,7 +301,7 @@ svg { display: block; }
 /* ------------------------------------------------------------- type rows */
 
 .type-row {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center; gap: 6px;
   padding: 6px 6px 6px 8px; border-radius: 6px; cursor: pointer;
   border: 1px solid transparent;
 }
@@ -311,7 +311,7 @@ svg { display: block; }
 .type-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
 .type-shape { color: var(--muted); flex: none; display: flex; }
 .type-row.active .type-shape { color: var(--text); }
-.type-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-name { flex: 1; min-width: 42px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .type-rot { color: var(--dim); display: flex; flex: none; }
 
 .key {
@@ -748,3 +748,98 @@ select:focus { border-color: var(--accent); }
 
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { background: var(--panel-2); border-color: var(--border-2); color: var(--text); }
+
+/* ------------------------------------------------ instances of a marker type */
+
+.twisty {
+  flex: none; width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; color: var(--dim);
+  transition: transform .12s, color .12s, background .12s;
+}
+.twisty:hover:not(:disabled) { color: var(--text); background: #232c3a; }
+.twisty:disabled { opacity: .22; cursor: default; }
+.twisty.open { transform: rotate(90deg); color: var(--text); }
+
+.inst-list {
+  margin: 1px 0 5px 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-2);
+}
+
+.inst-img {
+  padding: 5px 6px 3px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: .4px;
+  color: var(--dim); text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inst-img.here { color: var(--accent); }
+
+.inst-row {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 3px 6px; border-radius: 5px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.inst-row:hover { background: var(--panel-2); }
+.inst-row.active { background: #1d2938; border-color: #31465f; }
+.inst-n { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.inst-sum {
+  flex: 1; min-width: 0;
+  color: var(--dim); font-size: 10.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inst-row.active .inst-sum { color: var(--muted); }
+
+.inst-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+  margin: 4px 0 8px; padding: 8px;
+  background: #0e131b; border: 1px solid var(--border-2); border-radius: 6px;
+}
+.propf { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.propf > span {
+  flex: none; width: 34px;
+  color: var(--dim); font-size: 10.5px; font-weight: 650; letter-spacing: .3px;
+}
+.propf input {
+  flex: 1; min-width: 0; height: 24px; padding: 0 6px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 5px;
+  color: var(--text); font-size: 11.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  outline: none;
+}
+.propf input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(76,154,255,.18); }
+.propx {
+  grid-column: 1 / -1;
+  display: flex; justify-content: space-between; gap: 8px;
+  color: var(--dim); font-size: 10.5px;
+}
+.propx b { color: var(--muted); font-weight: 600; }
+
+/* per-keypoint editing inside a selected pose */
+.kprops { grid-column: 1 / -1; margin-top: 4px; border-top: 1px solid var(--border); padding-top: 6px; }
+.kprops-head {
+  padding: 2px 0 5px;
+  font-size: 10px; font-weight: 650; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--dim);
+}
+.kprow { display: flex; align-items: center; gap: 4px; padding: 2px 0; }
+.kprow.untouched .kpname { color: var(--dim); font-style: italic; }
+.kpname {
+  flex: 1; min-width: 0;
+  font-size: 10.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kprow input {
+  flex: none; width: 46px; height: 21px; padding: 0 4px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 4px;
+  color: var(--text); font-size: 10.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  outline: none;
+}
+.kprow input:focus { border-color: var(--accent); }
+.kprow input:disabled { opacity: .35; }
+.kprow select {
+  flex: none; width: 34px; height: 21px; padding: 0 2px;
+  font-size: 10.5px; border-radius: 4px;
+}

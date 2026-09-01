@@ -142,6 +142,29 @@ The keypoint **order is the export index**, so once anything has been annotated 
 the editor locks adding, deleting and reordering. Renaming, moving the template and changing
 bones stay available, because none of those shift an index.
 
+## Properties
+
+While you draw or drag a marker — and whenever exactly one is selected — a readout above it
+shows its geometry in absolute image pixels, the same numbers the export writes.
+
+Each marker type in the sidebar has an arrow that opens **the markers placed with it**,
+grouped by image. Clicking one jumps to its image, selects it and centres the view; selecting
+a marker on the canvas opens its row in the sidebar. The selected marker's row expands into
+number fields you can type into.
+
+| Mode | Editable | Also shown |
+| --- | --- | --- |
+| Point | `x`, `y` | – |
+| Rectangle | `x`, `y`, `w`, `h`, `angle` when rotatable | – |
+| Ellipse | `x`, `y`, `w`, `h`, `angle` when rotatable | – |
+| Line | `x1`, `y1`, `x2`, `y2` | length, bearing |
+| Polygon | `x`, `y`, `w`, `h` of its box | vertex count, area |
+| Pose | `x`, `y`, `w`, `h` of its box, then every keypoint's position and visibility | how many keypoints are confirmed |
+
+`x, y` is always the **top-left corner**, never the centre, so typing a width grows the shape
+rightwards rather than from the middle. A polygon has no size of its own, so editing its box
+translates or scales every vertex together — handy for nudging a traced outline into place.
+
 ## Export
 
 **Every drawing mode gets its own CSV**, carrying only the columns that mode needs:

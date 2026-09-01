@@ -24,6 +24,7 @@
     panel: 'files',
     sidebarCollapsed: false,
     onboarded: false   // the first-run prompt has been answered, one way or another
+    ,expanded: {}      // typeId -> its instance list is open in the sidebar
   };
 
   App.SHAPES = ['point', 'rect', 'line', 'ellipse', 'polygon', 'pose'];
@@ -402,10 +403,10 @@
     if (m.shape === 'line') {
       len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
       out.push({ label: 'Length', value: tidy(len) + ' px' });
-      out.push({ label: 'Angle', value: tidy(Math.atan2(m.y2 - m.y1, m.x2 - m.x1) * 180 / Math.PI) + ' deg' });
+      out.push({ label: 'Angle', value: tidy(Math.atan2(m.y2 - m.y1, m.x2 - m.x1) * 180 / Math.PI) + ' °' });
     } else if (m.shape === 'polygon') {
       out.push({ label: 'Vertices', value: String(m.pts.length) });
-      out.push({ label: 'Area', value: tidy(App.polygonArea(m.pts)) + ' px2' });
+      out.push({ label: 'Area', value: tidy(App.polygonArea(m.pts)) + ' px²' });
     } else if (m.shape === 'pose') {
       done = App.poseProgress(m);
       out.push({ label: 'Confirmed', value: done.done + ' of ' + done.total });
@@ -418,7 +419,7 @@
   App.markerSummary = function (m, t) {
     var f = App.markerFields(m, t), parts = [], i, len;
     for (i = 0; i < f.length; i++) {
-      parts.push(f[i].label + ' ' + tidy(App.readField(m, f[i].key)) + (f[i].unit === 'deg' ? 'deg' : ''));
+      parts.push(f[i].label + ' ' + tidy(App.readField(m, f[i].key)) + (f[i].unit === 'deg' ? '°' : ''));
     }
     if (m.shape === 'line') {
       len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);

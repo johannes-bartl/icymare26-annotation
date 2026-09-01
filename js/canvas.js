@@ -1390,6 +1390,30 @@
     Canvas.render();
   }
 
+  /**
+   * Centre the view on a marker, zooming in only when it is too small to see.
+   * Used when an instance is picked from the sidebar list.
+   */
+  Canvas.focusMarker = function (m) {
+    if (!m) return;
+    var b = App.bboxOf(m), r = stage.getBoundingClientRect(),
+        wantW = Math.max(b.x2 - b.x1, 1) * view.scale,
+        wantH = Math.max(b.y2 - b.y1, 1) * view.scale,
+        c, sc;
+
+    /* anything smaller than a thumb on screen gets zoomed until it is workable */
+    if (Math.max(wantW, wantH) < 60) {
+      sc = Math.min(8, 160 / Math.max(b.x2 - b.x1, b.y2 - b.y1, 1));
+      view.scale = App.clamp(sc, view.scale, 40);
+    }
+    c = App.centerOf(m);
+    var p = rotate(c.x, c.y);
+    view.x = r.width / 2 - p.x * view.scale;
+    view.y = (r.height - 26) / 2 - p.y * view.scale;
+    Canvas.render();
+    if (window.UI) window.UI.updateStatus();
+  };
+
   /** Marker whose handles are currently showing, if any. */
   Canvas.armedId = function () { return hoverEdgeId; };
 
