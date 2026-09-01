@@ -200,6 +200,11 @@
     if (done) done();
   }
 
+  /** Forget a removed image's decoded bitmap so it can be garbage collected. */
+  Canvas.dropImage = function (imageId) {
+    delete imgCache[imageId];
+  };
+
   /* ---------------------------------------------------------------- render */
 
   Canvas.render = function () {

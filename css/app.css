@@ -737,3 +737,11 @@ select:focus { border-color: var(--accent); }
   z-index: 200;
 }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* remove-image button, revealed on hover or keyboard focus */
+.file-row { position: relative; outline: none; }
+.file-row:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(76,154,255,.25); }
+.file-del { opacity: 0; flex: none; transition: opacity .12s; }
+.file-row:hover .file-del,
+.file-row:focus-within .file-del,
+.file-row:focus-visible .file-del { opacity: 1; }

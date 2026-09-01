@@ -265,7 +265,9 @@
 
     els.fileList.addEventListener('click', function (e) {
       var row = e.target.closest('.file-row');
-      if (row) selectImage(row.dataset.id);
+      if (!row) return;
+      if (e.target.closest('[data-act="del-image"]')) { askRemoveImage(row.dataset.id); return; }
+      selectImage(row.dataset.id);
     });
   }
 
@@ -344,6 +346,29 @@
     refresh();
   }
 
+  function askRemoveImage(id) {
+    var img = null, i, n;
+    for (i = 0; i < App.state.images.length; i++) if (App.state.images[i].id === id) img = App.state.images[i];
+    if (!img) return;
+    n = App.countOfImage(id);
+
+    if (!n) { removeImage(id); return; }
+    confirm2(
+      'Remove ' + img.name + '?',
+      'It carries ' + n + ' marker' + (n === 1 ? '' : 's') + ', which go with it. Ctrl+Z brings both back.',
+      function () { removeImage(id); }
+    );
+  }
+
+  function removeImage(id) {
+    var next = App.removeImage(id);
+    Canvas.dropImage(id);
+    if (next) Canvas.showImage(App.activeImage(), refresh);
+    else Canvas.render();
+    refresh();
+    UI.toast('Image removed');
+  }
+
   function step(dir) {
     var idx = App.imageIndex();
     if (idx === -1) return;
@@ -376,10 +401,13 @@
     for (i = 0; i < s.images.length; i++) {
       img = s.images[i];
       n = App.countOfImage(img.id);
-      html += '<div class="file-row' + (img.id === s.activeImageId ? ' active' : '') + '" data-id="' + img.id + '">' +
+      html += '<div class="file-row' + (img.id === s.activeImageId ? ' active' : '') +
+                '" data-id="' + img.id + '" tabindex="0">' +
                 '<img class="file-thumb" src="' + img.url + '" loading="lazy" alt="">' +
                 '<span class="file-name" title="' + esc(img.name) + '">' + esc(img.name) + '</span>' +
                 (n ? '<span class="pill">' + n + '</span>' : '') +
+                '<button class="iconbtn tiny danger file-del" data-act="del-image" ' +
+                  'title="Remove this image (Del)">' + window.svgIcon('trash', 13) + '</button>' +
               '</div>';
     }
     els.fileList.innerHTML = html || '<p class="panel-empty">No images yet.<br>Drop a folder anywhere on the page.</p>';
@@ -760,6 +788,15 @@
       if (isTyping(e.target)) return;
 
       var k = e.key, ctrl = e.ctrlKey || e.metaKey;
+
+      /* Delete means "this image" while the file list holds focus, and
+         "these markers" everywhere else */
+      var fileRow = e.target.closest && e.target.closest('.file-row');
+      if (fileRow && (k === 'Delete' || k === 'Backspace')) {
+        e.preventDefault();
+        askRemoveImage(fileRow.dataset.id);
+        return;
+      }
 
       if (ctrl && (k === 'z' || k === 'Z')) {
         e.preventDefault();

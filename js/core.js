@@ -278,6 +278,31 @@
     App.save();
   };
 
+  /**
+   * Drop an image and everything drawn on it. Returns the id of the image that
+   * should take focus, so the caller can keep the canvas on something sensible
+   * rather than emptying it whenever a middle entry is removed.
+   */
+  App.removeImage = function (imageId) {
+    var s = App.state, i = -1, j, next = null;
+    for (j = 0; j < s.images.length; j++) if (s.images[j].id === imageId) i = j;
+    if (i === -1) return s.activeImageId;
+
+    App.pushUndo();
+    try { URL.revokeObjectURL(s.images[i].url); } catch (e) { /* already gone */ }
+    delete s.markers[imageId];
+    s.images.splice(i, 1);
+
+    if (s.activeImageId === imageId) {
+      /* the next image down, or the new last one if we removed the tail */
+      next = s.images.length ? s.images[Math.min(i, s.images.length - 1)].id : null;
+      s.activeImageId = next;
+      s.selection = [];
+    }
+    App.save();
+    return s.activeImageId;
+  };
+
   /* ----------------------------------------------------------------- undo */
 
   var undoStack = [], redoStack = [], UNDO_LIMIT = 60;

@@ -34,6 +34,7 @@ The **Get help** button in the top bar lists all of this in the app itself.
 | Previous / next image | `,` and `.` or the arrow keys |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Lock existing markers | `L`, or the padlock in the top bar |
+| Remove an image | The bin on its row in the Images panel, or `Del` once the row is focused |
 
 Markers are drawn as **outlines with no fill**, and their handles appear on their own as
 soon as the cursor comes near an edge — nothing has to be clicked or selected first.
