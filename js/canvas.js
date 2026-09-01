@@ -934,6 +934,15 @@
        the bin back when the pointer is free again */
     if ((pending || drag) && window.UI) window.UI.moveBinCursor(0, 0, false);
 
+    /* A pan started with the right button keeps working while a polygon is
+       being drawn — otherwise the shape traps the view where it began. */
+    if (drag && drag.mode === 'pan') {
+      view.x = drag.vx + (p.x - drag.sx);
+      view.y = drag.vy + (p.y - drag.sy);
+      Canvas.render();
+      return;
+    }
+
     if (pending) {
       pending.cursor = ip;
       /* holding the button down traces a run of vertices along the drag —
@@ -1075,6 +1084,12 @@
   }
 
   function onPointerUp(e) {
+    if (drag && drag.mode === 'pan') {      // may have been panning over a pending shape
+      drag = null;
+      updateCursor();
+      Canvas.render();
+      return;
+    }
     if (pending) { pending.tracing = false; return; }
     if (!drag) return;
     var d = drag, img = App.activeImage();
