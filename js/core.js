@@ -304,6 +304,149 @@
     return s.activeImageId;
   };
 
+  /* ------------------------------------------------------- marker properties
+
+     One description of what a marker exposes, shared by the readout on the
+     canvas and the editable fields in the sidebar, so the two can never
+     disagree about what a mode has.
+
+     Every value is in absolute image pixels, matching the export. `x, y` is
+     always the top-left corner of the shape's own box, never its centre.      */
+
+  var FIELDS = {
+    point:   [['x', 'X'], ['y', 'Y']],
+    rect:    [['x', 'X'], ['y', 'Y'], ['w', 'W'], ['h', 'H']],
+    ellipse: [['x', 'X'], ['y', 'Y'], ['w', 'W'], ['h', 'H']],
+    line:    [['x1', 'X1'], ['y1', 'Y1'], ['x2', 'X2'], ['y2', 'Y2']],
+    polygon: [['x', 'X'], ['y', 'Y'], ['w', 'W'], ['h', 'H']],
+    pose:    [['x', 'X'], ['y', 'Y'], ['w', 'W'], ['h', 'H']]
+  };
+
+  /** Editable fields for a marker, as [{key, label}]. */
+  App.markerFields = function (m, t) {
+    var out = (FIELDS[m.shape] || []).map(function (f) { return { key: f[0], label: f[1] }; });
+    if ((m.shape === 'rect' || m.shape === 'ellipse') && t && t.rotatable) {
+      out.push({ key: 'angle', label: 'Angle', unit: 'deg' });
+    }
+    return out;
+  };
+
+  /** Read one field, in image pixels (or degrees for `angle`). */
+  App.readField = function (m, key) {
+    var b;
+    if (m.shape === 'line') return m[key];
+    if (m.shape === 'point') return key === 'x' ? m.cx : m.cy;
+    if (m.shape === 'polygon') {
+      b = App.bboxOf(m);
+      if (key === 'x') return b.x1;
+      if (key === 'y') return b.y1;
+      if (key === 'w') return b.x2 - b.x1;
+      if (key === 'h') return b.y2 - b.y1;
+      return 0;
+    }
+    /* rect, ellipse, pose all carry a centre plus a size */
+    if (key === 'x') return m.cx - m.w / 2;
+    if (key === 'y') return m.cy - m.h / 2;
+    if (key === 'w') return m.w;
+    if (key === 'h') return m.h;
+    if (key === 'angle') return m.angle || 0;
+    return 0;
+  };
+
+  /**
+   * Write one field. A polygon has no centre or size of its own, so setting
+   * its box translates or scales every vertex — which is exactly what someone
+   * nudging a traced outline into place wants.
+   */
+  App.writeField = function (m, key, v, img) {
+    var b, i, sx, sy;
+    if (!isFinite(v)) return false;
+
+    if (m.shape === 'line') { m[key] = v; }
+    else if (m.shape === 'point') { if (key === 'x') m.cx = v; else m.cy = v; }
+    else if (m.shape === 'polygon') {
+      b = App.bboxOf(m);
+      if (key === 'x') { for (i = 0; i < m.pts.length; i++) m.pts[i][0] += v - b.x1; }
+      else if (key === 'y') { for (i = 0; i < m.pts.length; i++) m.pts[i][1] += v - b.y1; }
+      else if (key === 'w') {
+        if (b.x2 - b.x1 < 0.01) return false;          // nothing to scale from
+        sx = Math.max(v, 1) / (b.x2 - b.x1);
+        for (i = 0; i < m.pts.length; i++) m.pts[i][0] = b.x1 + (m.pts[i][0] - b.x1) * sx;
+      } else if (key === 'h') {
+        if (b.y2 - b.y1 < 0.01) return false;
+        sy = Math.max(v, 1) / (b.y2 - b.y1);
+        for (i = 0; i < m.pts.length; i++) m.pts[i][1] = b.y1 + (m.pts[i][1] - b.y1) * sy;
+      }
+    } else {
+      /* rect, ellipse, pose. Resizing holds the top-left corner still, so
+         typing a width grows the shape rightwards rather than from its middle. */
+      if (key === 'x') m.cx = v + m.w / 2;
+      else if (key === 'y') m.cy = v + m.h / 2;
+      else if (key === 'w') { var l = m.cx - m.w / 2; m.w = Math.max(v, 1); m.cx = l + m.w / 2; }
+      else if (key === 'h') { var tp = m.cy - m.h / 2; m.h = Math.max(v, 1); m.cy = tp + m.h / 2; }
+      else if (key === 'angle') m.angle = ((v % 360) + 360) % 360;
+    }
+    if (img && img.w) App.clampMarker(m, img.w, img.h);
+    return true;
+  };
+
+  function tidy(v) {
+    var r = Math.round(v * 10) / 10;
+    return (r === Math.round(r)) ? String(Math.round(r)) : r.toFixed(1);
+  }
+  App.tidy = tidy;
+
+  /** Facts about a marker that are worth showing but are not editable. */
+  App.markerExtras = function (m, t) {
+    var out = [], done, len;
+    if (m.shape === 'line') {
+      len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+      out.push({ label: 'Length', value: tidy(len) + ' px' });
+      out.push({ label: 'Angle', value: tidy(Math.atan2(m.y2 - m.y1, m.x2 - m.x1) * 180 / Math.PI) + ' deg' });
+    } else if (m.shape === 'polygon') {
+      out.push({ label: 'Vertices', value: String(m.pts.length) });
+      out.push({ label: 'Area', value: tidy(App.polygonArea(m.pts)) + ' px2' });
+    } else if (m.shape === 'pose') {
+      done = App.poseProgress(m);
+      out.push({ label: 'Confirmed', value: done.done + ' of ' + done.total });
+    }
+    void t;
+    return out;
+  };
+
+  /** One-line geometry summary, for the readout that follows the cursor. */
+  App.markerSummary = function (m, t) {
+    var f = App.markerFields(m, t), parts = [], i, len;
+    for (i = 0; i < f.length; i++) {
+      parts.push(f[i].label + ' ' + tidy(App.readField(m, f[i].key)) + (f[i].unit === 'deg' ? 'deg' : ''));
+    }
+    if (m.shape === 'line') {
+      len = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+      parts.push('len ' + tidy(len));
+    } else if (m.shape === 'polygon') {
+      parts.push(m.pts.length + ' pts');
+    } else if (m.shape === 'pose') {
+      parts.push(App.poseProgress(m).done + '/' + m.kps.length + ' pts');
+    }
+    return parts.join('   ');
+  };
+
+  /** Every marker of a type, across every image, in image order. */
+  App.instancesOf = function (typeId) {
+    var s = App.state, out = [], i, j, img, list, n;
+    for (i = 0; i < s.images.length; i++) {
+      img = s.images[i];
+      list = s.markers[img.id] || [];
+      n = 0;
+      for (j = 0; j < list.length; j++) {
+        if (list[j].typeId !== typeId) continue;
+        n += 1;
+        out.push({ marker: list[j], image: img, index: n });
+      }
+    }
+    return out;
+  };
+
   /* ----------------------------------------------------------------- undo */
 
   var undoStack = [], redoStack = [], UNDO_LIMIT = 60;

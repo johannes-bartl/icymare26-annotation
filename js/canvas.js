@@ -257,6 +257,8 @@
     if (hoverInsert && !drag) drawInsertGhost();
     if (hoverKill && !drag) drawKillGhost();
 
+    drawReadout();
+
     /* rubber band */
     if (drag && drag.mode === 'band') {
       var x = Math.min(drag.sx, drag.mx), y = Math.min(drag.sy, drag.my),
@@ -412,6 +414,56 @@
       ctx.strokeStyle = closable ? color : '#0e1116';
       ctx.stroke();
     }
+  }
+
+  /**
+   * Live geometry for whatever is being worked on: the shape under the cursor
+   * mid-drag, or the single selected marker. Anchored just above the marker's
+   * bounding box, flipped below it when that would run off the top.
+   */
+  function drawReadout() {
+    var m = readoutMarker(), t, text, b, a, w, x, y;
+    if (!m) return;
+
+    t = App.getType(m.typeId);
+    text = App.markerSummary(m, t);
+    if (!text) return;
+
+    ctx.font = '600 11.5px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+    w = ctx.measureText(text).width + 16;
+
+    b = App.bboxOf(m);
+    a = toScreen(b.x1, b.y1);
+    var a2 = toScreen(b.x2, b.y2),
+        left = Math.min(a.x, a2.x), top = Math.min(a.y, a2.y), bot = Math.max(a.y, a2.y);
+
+    x = left;
+    y = top - 26;
+    if (y < 4) y = bot + 8;                       // no room above, sit underneath
+    x = App.clamp(x, 4, canvas.width / dpr - w - 4);
+
+    ctx.fillStyle = 'rgba(13,17,23,.92)';
+    ctx.strokeStyle = t ? hexA(t.color, .75) : 'rgba(255,255,255,.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, 20, 5); else ctx.rect(x, y, w, 20);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#e6edf3';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 8, y + 10.5);
+  }
+
+  /** The marker the readout should describe, if any. */
+  function readoutMarker() {
+    if (drag && drag.mode === 'create' && drag.preview) return drag.preview;
+    if (drag && (drag.mode === 'resize' || drag.mode === 'rotate') && drag.m) return drag.m;
+    if (pending && !pending.line && pending.pts.length >= 2) {
+      return { id: 'pending', typeId: pending.type.id, shape: 'polygon', pts: pending.pts };
+    }
+    if (!drag && App.state.selection.length === 1) return App.getMarker(App.state.selection[0]);
+    return null;
   }
 
   /** Hollow "+" sitting on the edge, marking where a click adds a vertex. */
