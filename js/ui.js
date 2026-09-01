@@ -712,6 +712,7 @@
       };
       App.state.types.push(nt);
       App.state.activeTypeId = nt.id;
+      App.state.onboarded = true;
     }
     App.save();
     closeModal();
