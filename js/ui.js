@@ -147,6 +147,21 @@
     updateStatus();
   }
 
+  var VIS_WORD = ['absent', 'occluded', 'visible'];
+
+  /**
+   * Set a keypoint's visibility without breaking stride: hover it and press O.
+   * Marking a point occluded is the commonest edit while placing a pose, and
+   * reaching for the sidebar for each one costs more than the annotation.
+   */
+  function cycleKeypointVisibility() {
+    var r = Canvas.cycleHoveredVisibility();
+    if (!r) { UI.toast('Hover a pose keypoint first, then press O'); return; }
+    UI.toast(r.name + ' - ' + VIS_WORD[r.vis]);
+    refresh();
+    Canvas.render();
+  }
+
   function setTool(t) {
     App.state.tool = t;
     var tools = document.querySelectorAll('#toolgroup .tool');
@@ -1060,6 +1075,7 @@
         case 'x': case 'X': setTool(App.state.tool === 'delete' ? 'annotate' : 'delete'); break;
         case 'r': case 'R': Canvas.rotateView(); break;
         case 'l': case 'L': setLocked(!App.state.locked); break;
+        case 'o': case 'O': cycleKeypointVisibility(); break;
         case 'f': case 'F': Canvas.fit(); updateStatus(); break;
         case '?': openModal('modal-help'); break;
         case '+': case '=': Canvas.zoomAt(1.25); updateStatus(); break;

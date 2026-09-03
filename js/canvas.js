@@ -1365,6 +1365,35 @@
   /** Marker whose handles are currently showing, if any. */
   Canvas.armedId = function () { return hoverEdgeId; };
 
+  /**
+   * The pose keypoint under the cursor, if any. `O` acts on this rather than on
+   * a selection, so visibility can be set while placing without stopping to
+   * click anything first.
+   */
+  function hoveredKeypoint() {
+    if (!hoverHandle || hoverHandle.id.charAt(0) !== 'k') return null;
+    if (hoverHandle.marker.shape !== 'pose') return null;
+    return { marker: hoverHandle.marker, index: +hoverHandle.id.slice(1) };
+  }
+
+  /**
+   * Step the hovered keypoint through visible -> occluded -> absent. Returns
+   * the state it landed on, or null when the cursor was not on one.
+   */
+  Canvas.cycleHoveredVisibility = function () {
+    var hk = hoveredKeypoint(), kp, t, name;
+    if (!hk) return null;
+    App.pushUndo();
+    kp = hk.marker.kps[hk.index];
+    kp[2] = (kp[2] + 2) % 3;          // 2 -> 1 -> 0 -> 2
+    kp[3] = 1;
+    App.save();
+    t = App.getType(hk.marker.typeId);
+    name = (t && t.skeleton && t.skeleton.keypoints[hk.index])
+      ? t.skeleton.keypoints[hk.index].name : 'point ' + (hk.index + 1);
+    return { name: name, vis: kp[2] };
+  };
+
   /** The polygon vertex Alt+click would remove right now, if any. */
   Canvas.killVertex = function () {
     return hoverKill ? { markerId: hoverKill.marker.id, index: hoverKill.index } : null;
