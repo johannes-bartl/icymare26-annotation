@@ -474,7 +474,7 @@
   }
 
   function renderSources() {
-    var s = App.state, html = '', i, src, j, t;
+    var s = App.state, html = '', i, src, classes, j, t;
     for (i = 0; i < s.sources.length; i++) {
       src = s.sources[i];
       html += '<div class="src-row" data-id="' + src.id + '">' +
@@ -488,13 +488,14 @@
                   (src.skipped ? ' · ' + src.skipped + ' skipped' : '') + '</div>';
 
       if (src.classes.length) {
+        classes = src.classes.slice().sort(App.naturalCompare);
         html += '<div class="src-chips">';
-        for (j = 0; j < src.classes.length; j++) {
-          t = typeByName(src.classes[j]);
+        for (j = 0; j < classes.length; j++) {
+          t = typeByName(classes[j]);
           html += '<button class="src-chip"' + (t ? ' data-type="' + t.id + '"' : '') +
-                    ' title="' + esc(src.classes[j]) + ' — click to change its colour">' +
+                    ' title="' + esc(classes[j]) + ' — click to change its colour">' +
                     '<span class="src-dot" style="background:' + (t ? t.color : '#667384') + '"></span>' +
-                    esc(src.classes[j]) + '</button>';
+                    esc(classes[j]) + '</button>';
         }
         html += '</div>';
       }
@@ -603,16 +604,45 @@
 
   /** Walk a DataTransfer, descending into dropped folders. */
   function collectDropped(dt, done) {
-    var items = dt.items, entries = [], i, out = [], pending = 1;
+    var items = dt && dt.items, entries = [], i, out = [], pending = 1;
+    /* Snapshot the FileList while the drop event is still active. In browsers
+       opening this app through file://, entry.file() can be denied later even
+       though dataTransfer.files is available synchronously. */
+    var direct = Array.prototype.slice.call((dt && dt.files) || []);
 
-    if (!items || !items.length || !items[0].webkitGetAsEntry) { done(dt.files); return; }
+    if (items && items.length) {
+      for (i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'file' || !items[i].getAsFile) continue;
+        var itemFile = items[i].getAsFile();
+        if (itemFile) direct.push(itemFile);
+      }
+    }
+
+    function unique(files) {
+      var seen = {}, result = [], j, f, key;
+      for (j = 0; j < files.length; j++) {
+        f = files[j];
+        if (!f || !f.name) continue;
+        key = f.name + '\n' + (f.size || 0) + '\n' + (f.lastModified || 0);
+        if (!seen[key]) { seen[key] = true; result.push(f); }
+      }
+      return result;
+    }
+
+    if (!items || !items.length || !items[0].webkitGetAsEntry) { done(unique(direct)); return; }
     for (i = 0; i < items.length; i++) {
-      var en = items[i].webkitGetAsEntry();
+      var en = null;
+      try { en = items[i].webkitGetAsEntry(); } catch (ignore) {}
       if (en) entries.push(en);
     }
-    if (!entries.length) { done(dt.files); return; }
+    if (!entries.length) { done(unique(direct)); return; }
 
-    function finish() { pending -= 1; if (pending === 0) done(out); }
+    function finish() {
+      pending -= 1;
+      /* Merge the synchronous snapshot back in. This is both the file://
+         fallback and support for mixed file + folder drops. */
+      if (pending === 0) done(unique(out.concat(direct)));
+    }
 
     function walk(entry) {
       if (entry.isFile) {
