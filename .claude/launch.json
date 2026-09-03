@@ -4,7 +4,7 @@
     {
       "name": "annotator",
       "runtimeExecutable": "py",
-      "runtimeArgs": ["-m", "http.server", "8777"],
+      "runtimeArgs": [".claude/devserver.py", "8777"],
       "port": 8777
     }
   ]

@@ -199,7 +199,22 @@
     }
     return out;
   }
-  Skeleton.autoPair = function (sk) { sk.flip = derivePairs(sk.keypoints); return sk; };
+  /**
+   * Match up mirror pairs by name, and set each point's side to match. Before,
+   * the pairs were found but the L/R dropdowns stayed on "-", so the button
+   * looked like it had done nothing.
+   */
+  Skeleton.autoPair = function (sk) {
+    sk.flip = derivePairs(sk.keypoints);
+    var i, a, b;
+    for (i = 0; i < sk.flip.length; i++) {
+      a = sk.keypoints[sk.flip[i][0]];
+      b = sk.keypoints[sk.flip[i][1]];
+      if (a) a.side = 'L';
+      if (b) b.side = 'R';
+    }
+    return sk;
+  };
 
   Skeleton.toJSON = function (sk) {
     return JSON.stringify({
@@ -256,6 +271,18 @@
     $('skel-preset').value = '';
     render();
     window.UI.openModalStacked('modal-skeleton');
+  };
+
+  /**
+   * Delete removes the selected keypoint, whether it was picked on the pad or
+   * in the list. Returns false when there is nothing selected, so the key can
+   * fall through to whatever else wants it.
+   */
+  Skeleton.handleDelete = function () {
+    if (selIdx === -1 || !work.keypoints[selIdx]) return false;
+    if (locked) { window.UI.toast('Points are locked - this type already has poses'); return true; }
+    removePoint(selIdx);
+    return true;
   };
 
   /** Escape inside the editor: drop the selection first, only then cancel. */
@@ -536,7 +563,7 @@
     if (selIdx !== -1 && work.keypoints[selIdx]) {
       el.innerHTML = '<b>' + esc(work.keypoints[selIdx].name) + '</b> selected — ' +
         'click another point to connect or disconnect it, click empty space to add a ' +
-        'point joined to it, or press Esc to deselect';
+        'point joined to it, <b>Del</b> to remove it, or Esc to deselect';
       el.classList.add('on');
     } else {
       el.textContent = 'Click empty space to add a keypoint · drag one to move it · ' +

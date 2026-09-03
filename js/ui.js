@@ -992,6 +992,11 @@
       }
 
       if (modalOpen()) {
+        /* the skeleton editor owns Delete while a keypoint is selected */
+        if ((e.key === 'Delete' || e.key === 'Backspace') &&
+            !$('modal-skeleton').hidden && !isTyping(e.target)) {
+          if (window.Skeleton.handleDelete()) { e.preventDefault(); return; }
+        }
         if (e.key === 'Escape') {
           e.preventDefault();
           /* inside the skeleton editor, Escape drops the selected keypoint
