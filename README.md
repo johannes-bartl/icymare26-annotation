@@ -209,6 +209,48 @@ Hover the **Export** button for a menu listing each file with its marker count a
 types are in it. Click one to download it on its own, or take everything at once: a single
 file downloads directly, several arrive as a ZIP.
 
+## Inspect: loading annotations back in
+
+The third icon on the far left opens **Inspect**, where you load annotation CSVs and see them
+drawn on your images. Predictions from a model, a colleague's labels, or an export from an
+earlier session all read the same way.
+
+- **load the images first**, then the CSVs - rows are matched to images by filename
+- one file may cover any number of images, and any number of files may be loaded
+- each class becomes a marker type with a colour picked for it; click its chip to change the
+  colour, or anything else about it
+- a class that matches an existing type by **name and encoding** reuses that type rather than
+  making a duplicate - a `Seal` box and a `Seal` pose stay separate, because they are
+- removing a file removes exactly the annotations it brought, and any type it invented that
+  is now empty; nothing you drew yourself is touched
+
+Imported annotations behave like any other marker: editable, listed in the sidebar, and
+included when you export.
+
+### What it reads
+
+The files this tool exports round-trip, and the geometry is worked out from whichever columns
+are present, so foreign files usually work too. The image column may be called `image_name`,
+`image`, `filename`, `file` or `path`; the class column `class_name`, `class`, `label`,
+`category` or `name`. Geometry is recognised as:
+
+| Columns present | Read as |
+| --- | --- |
+| `n_keypoints`, `px1`, `py1` … (and `v1` …) | pose, 2D or 3D |
+| `n_vertices`, `x1`, `y1` … | polygon |
+| `x1` … `y4` | oriented box |
+| `xc`/`cx`, `yc`/`cy`, `w`, `h` | box |
+| `x1`, `y1`, `x2`, `y2` | line |
+| `x`, `y`, `w`, `h` | box, `x, y` being its top-left corner |
+| `x`, `y` | point |
+
+A box and an ellipse are the same four numbers, so the filename breaks the tie: a file with
+`ellipse` in its name is read as ellipses, anything else as rectangles.
+
+If `image_width` and `image_height` are present and disagree with the loaded image, the
+coordinates are **rescaled onto it** - which is what you want when predictions came from a
+resized copy. The panel says when it has done that.
+
 ## Notes
 
 **Nothing is saved anywhere.** Marker types and annotations live only as long as the tab

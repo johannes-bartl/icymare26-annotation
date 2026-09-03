@@ -73,6 +73,7 @@
     <nav class="rail">
       <button class="rail-btn" data-panel="files" title="Images"><span data-icon="images"></span></button>
       <button class="rail-btn" data-panel="markers" title="Marker types"><span data-icon="tag"></span></button>
+      <button class="rail-btn" data-panel="inspect" title="Inspect annotations"><span data-icon="inspect"></span></button>
     </nav>
 
     <aside class="sidebar" id="sidebar">
@@ -101,6 +102,20 @@
         <div class="panel-body" id="type-list"></div>
         <div class="panel-foot">
           <button class="btn block" id="btn-new-type-2"><span data-icon="plus"></span> New marker type</button>
+        </div>
+      </section>
+
+      <!-- Inspect panel -->
+      <section class="panel" data-panel="inspect">
+        <div class="panel-head">
+          <h2>Inspect</h2>
+          <div class="panel-actions">
+            <button class="iconbtn" id="btn-add-csv" title="Load annotation CSVs"><span data-icon="plus"></span></button>
+          </div>
+        </div>
+        <div class="panel-body" id="source-list"></div>
+        <div class="panel-foot">
+          <button class="btn block" id="btn-add-csv-2"><span data-icon="upload"></span> Load annotations</button>
         </div>
       </section>
 
@@ -166,6 +181,7 @@
 <input type="file" id="input-files" accept="image/*" multiple hidden>
 <input type="file" id="input-folder" accept="image/*" multiple webkitdirectory hidden>
 <input type="file" id="skel-file" accept=".json,application/json" hidden>
+<input type="file" id="input-csv" accept=".csv,text/csv" multiple hidden>
 
 <!-- ───────────────────────── modals ───────────────────────── -->
 <div class="modal-root" id="modal-root" hidden>
@@ -429,6 +445,16 @@
       </section>
 
       <section>
+        <h4>Inspecting predictions</h4>
+        <p class="note" style="margin-top:0">
+          The third sidebar icon loads annotation CSVs and draws them on your images, matched
+          by filename &mdash; predictions from a model, or an export from an earlier session.
+          Each class becomes a marker type with a colour you can change, and removing a loaded
+          file removes exactly the annotations it brought. Load the images first.
+        </p>
+      </section>
+
+      <section>
         <h4>Exporting</h4>
         <p class="note" style="margin-top:0">
           Rows follow the layout YOLO uses for each task, in absolute image pixels:
@@ -466,6 +492,7 @@
 <script src="js/zip.js"></script>
 <script src="js/core.js"></script>
 <script src="js/skeleton.js"></script>
+<script src="js/import.js"></script>
 <script src="js/canvas.js"></script>
 <script src="js/ui.js"></script>
 </body>

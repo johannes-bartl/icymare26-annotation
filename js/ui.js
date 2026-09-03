@@ -27,6 +27,7 @@
     els.fileList = $('file-list');
     els.fileFoot = $('file-foot');
     els.typeList = $('type-list');
+    els.sourceList = $('source-list');
     els.bin = $('bincursor');
     els.modalRoot = $('modal-root');
     els.chip = $('active-type-chip');
@@ -124,6 +125,7 @@
     $('onboard-help').addEventListener('click', function () { openModal('modal-help'); });
     $('onboard-skip').addEventListener('click', function () { App.state.onboarded = true; refresh(); });
     wireExport();
+    wireInspect();
 
     $('btn-new-type').addEventListener('click', function () { openTypeEditor(null); });
     $('btn-new-type-2').addEventListener('click', function () { openTypeEditor(null); });
@@ -253,6 +255,151 @@
     menu.innerHTML = html;
   }
 
+  /* ================================================== inspect: loaded CSVs */
+
+  function wireInspect() {
+    var input = $('input-csv');
+    $('btn-add-csv').addEventListener('click', function () { input.click(); });
+    $('btn-add-csv-2').addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () { loadCSVs(this.files); this.value = ''; });
+
+    els.sourceList.addEventListener('click', function (e) {
+      var row = e.target.closest('.src-row');
+      if (!row) return;
+      var chip = e.target.closest('[data-type]');
+      if (chip) { openTypeEditor(chip.dataset.type); return; }
+      if (e.target.closest('[data-act="del-src"]')) askRemoveSource(row.dataset.id);
+    });
+  }
+
+  function loadCSVs(fileList) {
+    var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
+      return /\.csv$/i.test(f.name) || /csv/.test(f.type);
+    });
+    if (!files.length) { UI.toast('No CSV files in that selection'); return; }
+    if (!App.state.images.length) { UI.toast('Load the images first, so annotations have something to land on'); return; }
+
+    var done = 0, totals = { added: 0, skipped: 0, failed: 0 };
+
+    /* an image that has never been opened does not know its own size yet, and
+       a row cannot be placed on an image of unknown size */
+    Canvas.measureAll(function () { read(); });
+
+    function read() {
+    files.forEach(function (f) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        ingestOne(f.name, String(reader.result), totals);
+        done += 1;
+        if (done === files.length) finishLoad(totals);
+      };
+      reader.onerror = function () {
+        totals.failed += 1;
+        done += 1;
+        if (done === files.length) finishLoad(totals);
+      };
+      reader.readAsText(f);
+    });
+    }
+  }
+
+  function ingestOne(name, text, totals) {
+    var id = App.uid('src'), res;
+    App.pushUndo();
+    res = window.Importer.ingest(name, text, id);
+
+    if (res.error) {
+      totals.failed += 1;
+      UI.toast(name + ': ' + res.error);
+      return;
+    }
+    App.state.sources.push({
+      id: id, name: name, added: res.added, skipped: res.skipped,
+      classes: res.classes, images: res.images,
+      missingImages: res.missingImages || [], scaled: res.scaled
+    });
+    totals.added += res.added;
+    totals.skipped += res.skipped;
+  }
+
+  function finishLoad(totals) {
+    App.save();
+    setPanel('inspect');
+    setCollapsed(false);
+    refresh();
+    Canvas.render();
+    if (totals.added) {
+      UI.toast('Loaded ' + totals.added + ' annotation' + (totals.added === 1 ? '' : 's') +
+               (totals.skipped ? ' · ' + totals.skipped + ' skipped' : ''));
+    } else if (!totals.failed) {
+      UI.toast('Nothing matched the loaded images');
+    }
+  }
+
+  function askRemoveSource(id) {
+    var src = null, i;
+    for (i = 0; i < App.state.sources.length; i++) if (App.state.sources[i].id === id) src = App.state.sources[i];
+    if (!src) return;
+    confirm2(
+      'Remove ' + src.name + '?',
+      'The ' + src.added + ' annotation' + (src.added === 1 ? '' : 's') +
+      ' it brought in go with it. Nothing you drew yourself is touched.',
+      function () {
+        var n = window.Importer.removeSource(id);
+        App.save();
+        refresh();
+        Canvas.render();
+        UI.toast('Removed ' + n + ' annotation' + (n === 1 ? '' : 's'));
+      }
+    );
+  }
+
+  function renderSources() {
+    var s = App.state, html = '', i, src, j, t;
+    for (i = 0; i < s.sources.length; i++) {
+      src = s.sources[i];
+      html += '<div class="src-row" data-id="' + src.id + '">' +
+                '<div class="src-top">' +
+                  '<span class="src-name" title="' + esc(src.name) + '">' + esc(src.name) + '</span>' +
+                  '<button class="iconbtn tiny danger" data-act="del-src" title="Remove this file and its annotations">' +
+                    window.svgIcon('trash', 13) + '</button>' +
+                '</div>' +
+                '<div class="src-sub">' + src.added + ' annotation' + (src.added === 1 ? '' : 's') +
+                  ' · ' + src.images.length + ' image' + (src.images.length === 1 ? '' : 's') +
+                  (src.skipped ? ' · ' + src.skipped + ' skipped' : '') + '</div>';
+
+      if (src.classes.length) {
+        html += '<div class="src-chips">';
+        for (j = 0; j < src.classes.length; j++) {
+          t = typeByName(src.classes[j]);
+          html += '<button class="src-chip"' + (t ? ' data-type="' + t.id + '"' : '') +
+                    ' title="' + esc(src.classes[j]) + ' — click to change its colour">' +
+                    '<span class="src-dot" style="background:' + (t ? t.color : '#667384') + '"></span>' +
+                    esc(src.classes[j]) + '</button>';
+        }
+        html += '</div>';
+      }
+      if (src.missingImages && src.missingImages.length) {
+        html += '<div class="src-warn">' + src.missingImages.length +
+                ' image' + (src.missingImages.length === 1 ? '' : 's') +
+                ' not loaded: ' + esc(src.missingImages.slice(0, 3).join(', ')) +
+                (src.missingImages.length > 3 ? '…' : '') + '</div>';
+      }
+      if (src.scaled) {
+        html += '<div class="src-note">Coordinates rescaled to the loaded image size.</div>';
+      }
+      html += '</div>';
+    }
+    els.sourceList.innerHTML = html ||
+      '<p class="panel-empty">No annotations loaded.<br>Load a CSV to see predictions drawn on your images.</p>';
+  }
+
+  function typeByName(name) {
+    var t = App.state.types, i;
+    for (i = 0; i < t.length; i++) if (t[i].name === name) return t[i];
+    return null;
+  }
+
   /* ============================================================ file intake */
 
   function wireFiles() {
@@ -350,6 +497,8 @@
       refresh();
     }
     if (added) UI.toast('Added ' + added + ' image' + (added === 1 ? '' : 's'));
+    /* sizes are needed by the export and the importer, not just by the canvas */
+    Canvas.measureAll(function (n) { if (n) refresh(); });
     App.save();
   }
 
@@ -405,6 +554,7 @@
     }
     renderFiles();
     renderTypes();
+    renderSources();
     revealSelectedInstance();
     updateStatus();
     updateChip();

@@ -23,8 +23,9 @@
     shiftDown: false,
     panel: 'files',
     sidebarCollapsed: false,
-    onboarded: false   // the first-run prompt has been answered, one way or another
-    ,expanded: {}      // typeId -> its instance list is open in the sidebar
+    onboarded: false,    // the first-run prompt has been answered, one way or another
+    expanded: {},        // typeId -> its instance list is open in the sidebar
+    sources: []          // loaded annotation files: {id, name, added, classes, ...}
   };
 
   App.SHAPES = ['point', 'rect', 'line', 'ellipse', 'polygon', 'pose'];
@@ -452,13 +453,19 @@
 
   var undoStack = [], redoStack = [], UNDO_LIMIT = 60;
 
+  /* Loaded annotation files travel with the markers they brought: undoing a
+     file's removal has to put the file back in the list too, or its markers
+     return with nothing left that knows where they came from. */
   function snapshot() {
-    return JSON.stringify({ markers: App.state.markers, types: App.state.types });
+    return JSON.stringify({
+      markers: App.state.markers, types: App.state.types, sources: App.state.sources
+    });
   }
   function restore(str) {
     var d = JSON.parse(str);
     App.state.markers = d.markers;
     App.state.types = d.types;
+    App.state.sources = d.sources || [];
     App.state.selection = [];
     if (!App.getType(App.state.activeTypeId)) {
       App.state.activeTypeId = App.state.types.length ? App.state.types[0].id : null;

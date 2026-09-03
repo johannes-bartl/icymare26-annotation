@@ -200,6 +200,45 @@
     if (done) done();
   }
 
+  /**
+   * Learn every image's pixel size without displaying it. Until this runs only
+   * the image that has been on screen knows its own dimensions, which leaves
+   * the export writing blank widths and the importer unable to place a row on
+   * an image nobody has opened yet. Runs a few at a time so a folder of
+   * hundreds does not open hundreds of decodes at once.
+   */
+  Canvas.measureAll = function (done) {
+    var todo = App.state.images.filter(function (i) { return !i.w; }),
+        active = 0, next = 0, LIMIT = 6;
+
+    if (!todo.length) { if (done) done(0); return; }
+
+    function pump() {
+      while (active < LIMIT && next < todo.length) {
+        (function (img) {
+          active += 1;
+          var el = new Image();
+          el.onload = function () {
+            img.w = el.naturalWidth;
+            img.h = el.naturalHeight;
+            finish();
+          };
+          el.onerror = finish;
+          el.src = img.url;
+        })(todo[next]);
+        next += 1;
+      }
+    }
+
+    function finish() {
+      active -= 1;
+      if (next < todo.length) { pump(); return; }
+      if (active === 0 && done) done(todo.length);
+    }
+
+    pump();
+  };
+
   /** Forget a removed image's decoded bitmap so it can be garbage collected. */
   Canvas.dropImage = function (imageId) {
     delete imgCache[imageId];
