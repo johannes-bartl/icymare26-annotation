@@ -1,269 +1,433 @@
-# icymare26-annotation
+# ICYMARE 2026 — From Image to Analysis
 
-A zero-install image annotation tool for the "Machine Learning & YOLO for wildlife data"
-workshop at ICYMARE 2026. It is a static web page: **every image stays in your browser**,
-nothing is uploaded, no account, no software to install.
+<p align="center">
+  <img
+    width="600"
+    height="auto"
+    alt="ICYMARE 2026"
+    src="https://github.com/user-attachments/assets/25c37d0b-bc7a-4b0c-8cdb-45939b82002b"
+  />
+</p>
 
-## Use it
+## A Practical Workshop on Automated Wildlife Detection
 
-### 👉 [johannes-bartl.github.io/icymare26-annotation](https://johannes-bartl.github.io/icymare26-annotation/)
+This repository contains the annotation tool, datasets, and supporting material for the
+**From Image to Analysis: A Practical Workshop on Automated Wildlife Detection** workshop
+at ICYMARE 2026 in Bremen.
 
-Drop a folder of images on it, create a marker type, draw markers, hit **Export**.
-The page walks you through the first two steps.
+The workshop follows the complete path from raw wildlife imagery through annotation,
+model training, prediction inspection, and analysis.
+
+## Workshop resources
+
+| Resource | Description | Link |
+| --- | --- | --- |
+| Annotation tool | Browser-based tool for drawing, importing, inspecting, and exporting annotations | [Open](https://johannes-bartl.github.io/icymare26-workshop/) |
+| Annotation practice dataset | Six small image subsets for annotation exercises | [Download](https://github.com/johannes-bartl/icymare26-workshop/releases/tag/annotation-dataset) |
+| Training dataset | Prepared data for the model-training part of the workshop | [Download](https://github.com/johannes-bartl/icymare26-workshop/releases/tag/training-dataset) |
+| Google Colab notebook | Guided model-training and analysis notebook | **Coming soon** |
+| Source code | Annotation tool and workshop repository | [View the repository](https://github.com/johannes-bartl/icymare26-workshop) |
+
+The Colab notebook will be stored in this repository as:
+
+```text
+notebooks/icymare26_workshop.ipynb
+```
+
+# Datasets
+
+## Annotation practice dataset
+
+A small teaching dataset assembled for ICYMARE 2026. The images are samples drawn from
+real Antarctic and sub-Antarctic wildlife monitoring programmes.
+
+[Download the annotation practice dataset](https://github.com/johannes-bartl/icymare26-workshop/releases/tag/annotation-dataset)
+
+The complete download is approximately 156 MB. Each subset is provided as a separate ZIP
+archive.
+
+
+## Training dataset
+
+The larger prepared dataset used during the model-training exercises is distributed as a
+separate release:
+
+[Download the training dataset](https://github.com/johannes-bartl/icymare26-workshop/releases/tag/training-dataset)
+
+
+# Annotation tool
+
+[Open the annotation tool](https://johannes-bartl.github.io/icymare26-workshop/)
+
+The repository includes a zero-install image annotation tool created for the workshop.
+It is a static web application:
+
+- no account is required
+- no installation or build process is required
+- images and annotations remain inside the browser
+- nothing is uploaded to a server
+- the tool can be used online or by opening `index.html` locally
 
 ## Run it locally
 
-Just open `index.html` in a browser — there is no build step and no dependencies.
+Download or clone this repository and open `index.html` in a modern browser.
+
+No web server, package manager, build step, or external dependency is required.
+
+## Typical workflow
+
+1. Drop one or more images—or an entire image folder—onto the tool.
+2. Create a marker type or load annotation CSV files.
+3. Draw new annotations or inspect existing ones.
+4. Correct marker geometry and class assignments.
+5. Export the result before closing or reloading the page.
+
+Images and CSV files can be dropped together. The tool separates them automatically,
+loads the images first, and then matches the CSV rows to their images.
 
 ## Controls
 
-The **Get help** button in the top bar lists all of this in the app itself.
+The **Get help** button in the top bar also lists the controls inside the application.
 
-| Action | How |
+| Action | Control |
 | --- | --- |
-| Draw a marker | Left-drag on the image (click for Point markers) |
-| Resize / move | Left-drag a handle — see below |
-| Rotate | Drag the round handle above a rotatable marker (Shift snaps to 15°) |
-| Pan | **Right-drag** (also middle-drag, or Space + drag) |
-| Zoom | Mouse wheel · `+` / `−` · `F` fits the image |
-| Turn the image 90° | `R` — **display only**, exported coordinates never change |
-| Delete one marker | Hold **Ctrl** and click it (a bin appears beside the cursor), or the bin tool `X` |
-| Select many | Select tool `V`, then drag a box · Shift+click adds · `Ctrl+A` selects all |
-| Delete a selection | `Delete`, or the bin button in the top bar |
-| Switch marker type | Its hotkey `1`–`0`, or click it in the Markers panel |
-| Previous / next image | `,` and `.` or the arrow keys |
-| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
-| Lock existing markers | `L`, or the padlock in the top bar |
-| Collapse bounding boxes | `B`; configure the marker position from the box button in the top bar |
-| Remove an image | The bin on its row in the Images panel, or `Del` once the row is focused |
+| Draw a marker | Left-drag on the image; click once for a point |
+| Resize or move a handle | Left-drag the handle |
+| Rotate a marker | Drag its round rotation handle; hold `Shift` to snap to 15° |
+| Pan | Right-drag, middle-drag, or hold `Space` while dragging |
+| Zoom | Mouse wheel, `+`, `−`, or `F` to fit |
+| Rotate the displayed image | `R`; this does not change exported coordinates |
+| Delete a marker | Hold `Ctrl` and click it, or activate the delete tool with `X` |
+| Select multiple markers | Activate selection with `V`, then drag a selection box |
+| Add to a selection | `Shift`+click |
+| Select everything on an image | `Ctrl+A` |
+| Delete the selection | `Delete` |
+| Switch marker type | Press its assigned key from `1` to `0` |
+| Previous or next image | `,` and `.`, or the arrow buttons |
+| Undo or redo | `Ctrl+Z` and `Ctrl+Shift+Z` |
+| Lock existing markers | `L` or the padlock button |
+| Collapse bounding boxes | `B`; configure the display from the top bar |
+| Change keypoint visibility | Hover the keypoint and press `O`, or `Alt`+click it |
+| Remove an image | Use the bin on its image row |
 
-Markers are drawn as **outlines with no fill**, and their handles appear on their own as
-soon as the cursor comes near an edge — nothing has to be clicked or selected first.
-A marker can never be dragged around by its middle, so the inside of a box stays free
-canvas that you can draw another marker on. Boxes and ellipses are reshaped by their
-eight handles, lines by their two endpoints, and a point is picked up and moved once you
-hover close enough to it.
+Markers are drawn as outlines without a fill. Their edit handles appear when the cursor
+approaches an edge, endpoint, or vertex.
 
-The sidebar switches between **Images** and **Marker types** with the two icons on the
-far left. Drag its right edge to resize it; click the active icon to collapse it.
+A bounding box cannot be dragged by its centre. This leaves the interior available as
+canvas space, allowing another marker to be drawn inside an existing box.
 
-### Locking your work
+The sidebar contains three panels:
 
-The padlock in the top bar protects what you have already drawn. With it on, the annotate
-tool only ever places **new** markers — handles do not appear and a stray drag across an
-existing marker cannot reshape it. Hold `Shift` to edit one anyway, for as long as you hold
-it. Useful once an image is mostly done and you are filling in the last few animals.
+- **Images** lists the loaded images
+- **Marker types** contains classes, annotations, and editable properties
+- **Inspect** manages imported annotation CSV files
 
-### Collapsed bounding boxes
+The sidebar can be resized by dragging its right edge. Clicking the active panel icon
+collapses it.
 
-The dashed-box button in the top bar opens a display-only configuration panel. Activate it
-there (or press `B`) to replace rectangles with small square markers; moving the cursor into
-a rectangle reveals its full outline and normal edit handles. The marker can sit anywhere
-inside the box, and standing and lying boxes can use separate positions. This never changes
-the stored or exported geometry.
+## Locking existing work
 
-## Marker types
+The padlock in the top bar protects annotations that have already been placed.
 
-A marker type is one annotation class: a name, a colour, an optional hotkey, and a mode.
+When locked, the annotation tool creates new markers but does not expose edit handles for
+existing markers. Hold `Shift` temporarily when an existing marker needs to be corrected.
 
-| Mode | Drawn by | Rotation |
+This is useful when an image is nearly complete and accidental edits would be especially
+disruptive.
+
+## Collapsed bounding boxes
+
+The bounding-box button in the top bar opens the collapsed-box configuration.
+
+When enabled—or toggled with `B`—rectangles are displayed as small square markers. Moving
+the cursor into a box reveals its complete outline and edit handles.
+
+The display marker can be positioned anywhere inside the original rectangle. Separate
+positions can optionally be configured for:
+
+- standing boxes, where height is greater than or equal to width
+- lying boxes, where width is greater than height
+
+Collapsing boxes changes only how they are displayed. It never changes the stored or
+exported geometry.
+
+# Marker types
+
+A marker type defines one annotation class. It has:
+
+- a name
+- a colour
+- an optional number-key shortcut
+- a drawing mode
+- optional mode-specific settings
+
+| Mode | Drawing method | Rotation |
 | --- | --- | --- |
-| Point | a single click | – |
-| Rectangle | dragging corner to corner (Shift = square) | optional |
-| Line | dragging end to end, or clicking one end then the other | – |
-| Ellipse | dragging out its bounding box (Shift = circle) | optional |
-| Polygon | clicking each vertex, then the first one to close | – |
-| Pose | dragging a box, which fills with the type's skeleton | – |
+| Point | Single click | — |
+| Rectangle | Drag from corner to corner; `Shift` creates a square | Optional |
+| Line | Drag between endpoints, or click each endpoint | — |
+| Ellipse | Drag its bounding box; `Shift` creates a circle | Optional |
+| Polygon | Click vertices or drag to trace a boundary | — |
+| Pose | Draw a box containing a predefined skeleton | — |
 
-Deleting a marker type also deletes every marker placed with it; the confirmation dialog
-tells you how many.
+Deleting a marker type also deletes every annotation assigned to it. The confirmation
+dialog reports how many annotations will be affected.
 
-### Lines
+## Lines
 
-Drag from one end to the other, or **click once for each end**. The two-click form is the
-easier one when the ends are far apart, since you can pan between the clicks. `Esc` abandons
-a line still waiting for its far end.
+A line can be drawn in either of two ways:
 
-### Polygons
+- drag directly from one endpoint to the other
+- click once for the first endpoint and again for the second
 
-**Click** to place a vertex, or **drag** to trace a whole run of them along the cursor —
-clicks for corners, drags for curves, mixed freely in one shape. Close the ring by clicking
-the first vertex again (`Enter` and double-click also close it, `Backspace` removes the last
-vertex, `Esc` abandons the shape).
+The two-click method is useful when the endpoints are far apart because the image can be
+panned between clicks. Press `Esc` to abandon an unfinished line.
 
-Afterwards:
+## Polygons
 
-- drag any vertex to move it
-- hover an edge and click the **+** that appears to insert a vertex there, dragging it
-  straight out to where you want it
-- hold `Alt` — a bin follows the cursor and the vertex under it turns red; click to remove
-  that one (a polygon keeps a minimum of three)
+Click to place individual vertices or drag to trace a sequence of vertices. Both methods
+can be combined in one polygon.
 
-A traced polygon can carry dozens of vertices spaced about a handle-width apart, so only the
-handles near the cursor are drawn — otherwise the outline disappears under its own dots. Every
-vertex stays grabbable regardless.
+Close the polygon by:
 
-### Poses
+- clicking the first vertex
+- pressing `Enter`
+- double-clicking
 
-A pose type carries a **skeleton blueprint**: an ordered list of named keypoints, the bones
-drawn between them, and which pairs mirror each other. Drag a box on the image and the whole
-skeleton drops in pre-posed, so you adjust points rather than placing them from nothing.
+While drawing:
 
-- drag a keypoint to move it — that also marks it **confirmed**
-- `Alt`+click a keypoint to cycle **visible → occluded → absent**
-- points you have not touched are drawn hollow and faded, so an untouched template can
-  never pass for a finished annotation
-- resizing the box leaves the keypoints alone
+- `Backspace` removes the most recent vertex
+- `Esc` abandons the unfinished polygon
 
-#### Skeleton blueprints
+After drawing:
 
-Open the **Skeleton** editor from the marker type. On the pad:
+- drag a vertex to move it
+- hover an edge and drag the displayed `+` to insert a vertex
+- hold `Alt` and click a vertex to remove it
 
-- **click empty space** to add a keypoint
-- **drag a point** to move it
-- **click one point, then another** to connect or disconnect them
+A polygon always retains at least three vertices. For complex polygons, only nearby
+handles are displayed so the outline remains visible.
 
-The selected point gets a blue halo and a dashed line follows the cursor, showing exactly what
-the next click would join. Each new point chains onto the selected one, so drawing a limb is
-one click per joint. `Esc` deselects.
+## Poses
 
-**Start from** loads a preset — *Empty* to build from scratch, or quadruped, pinniped, bird,
-fish, or COCO-17 human. Where you place the points *is* the template pose, so it is worth
-arranging them roughly like a real animal.
+A pose marker type contains a skeleton blueprint: an ordered list of keypoints, the bones
+between them, and the keypoint pairs that exchange places during horizontal flipping.
 
-In the list beside the pad you can rename each point, set its side, and **move it up or down
-the order** with the arrows — bones and mirror pairs follow the point, so reordering never
-rewires the skeleton.
+Draw a pose by dragging its bounding box. The complete template skeleton is placed inside
+the box, ready for correction.
 
-**Mirror pairs** (the `↔` badges) record which keypoints swap when an image is flipped
-horizontally. Training augments images by flipping them, so without these the model learns
-left and right the wrong way round. **Auto-pair L/R** fills them in by matching `left_…` and
-`right_…` names; they are exported as YOLO's `flip_idx`.
+- drag a keypoint to move and confirm it
+- hover a keypoint and press `O` to cycle its visibility
+- `Alt`+click provides the same mouse-only visibility control
+- visibility cycles through **visible → occluded → absent**
+- untouched template points remain hollow and faded
+- resizing the outer box does not move confirmed keypoints
 
-> The COCO-17 preset is the spec exactly: seventeen points and nineteen bones, with **no
-> neck** — COCO does not define one. Add one with the editor if your model expects it.
+## Skeleton blueprints
 
-**Import and export the blueprint as JSON.** In a workshop this matters more than it sounds:
-if everyone defines their own skeleton you get mutually incompatible datasets. Hand out one
-`*_skeleton.json` and have everyone load it.
+Open the **Skeleton** editor from a pose marker type.
 
-The keypoint **order is the export index**, so once anything has been annotated with the type
-the editor locks adding, deleting and reordering. Renaming, moving the template and changing
-bones stay available, because none of those shift an index.
+Inside the editor:
 
-## Properties
+- click empty space to add a keypoint
+- drag a keypoint to reposition it
+- click one point and then another to connect or disconnect them
+- press `Delete` to remove the selected keypoint
+- press `Esc` to clear the selection
 
-Each marker type in the sidebar has an arrow that opens **the markers placed with it**,
-grouped by image. Clicking one jumps to its image, selects it and centres the view; selecting
-a marker on the canvas opens its row in the sidebar. The selected marker's row expands into
-number fields you can type into, in absolute image pixels — the same numbers the export
-writes.
+New points chain from the currently selected point, making it possible to draw a limb one
+joint at a time.
 
-| Mode | Editable | Also shown |
+The **Start from** menu provides the following presets:
+
+- Empty
+- Quadruped
+- Pinniped
+- Bird
+- Fish
+- COCO-17 human
+
+The position of each point defines the initial pose template.
+
+The keypoint list can be used to:
+
+- rename keypoints
+- assign centre, left, or right sides
+- move keypoints up or down in the export order
+- automatically match left/right pairs with **Auto-pair L/R**
+
+Mirror pairs become YOLO's `flip_idx`. They ensure that left and right labels are swapped
+correctly during horizontal training augmentation.
+
+> The COCO-17 preset contains exactly 17 keypoints and 19 bones. It does not contain a
+> neck keypoint because the COCO specification does not define one.
+
+Skeleton blueprints can be imported and exported as JSON. Sharing one blueprint prevents
+participants from creating datasets with incompatible keypoint orders.
+
+Once a pose has been annotated, operations that would change its keypoint indices are
+locked. Names, template positions, and bones can still be edited safely.
+
+# Marker properties
+
+Expand a marker type in the sidebar to see every annotation assigned to it, grouped by
+image.
+
+Clicking an annotation:
+
+- opens its image
+- selects the marker
+- centres it in the viewport
+- reveals its editable numeric properties
+
+All numeric values use absolute image pixels.
+
+| Mode | Editable properties | Additional information |
 | --- | --- | --- |
-| Point | `x`, `y` | – |
-| Rectangle | `x`, `y`, `w`, `h`, `angle` when rotatable | – |
-| Ellipse | `x`, `y`, `w`, `h`, `angle` when rotatable | – |
-| Line | `x1`, `y1`, `x2`, `y2` | length, bearing |
-| Polygon | `x`, `y`, `w`, `h` of its box | vertex count, area |
-| Pose | `x`, `y`, `w`, `h` of its box, then every keypoint's position and visibility | how many keypoints are confirmed |
+| Point | `x`, `y` | — |
+| Rectangle | `x`, `y`, `w`, `h`, and optionally `angle` | — |
+| Ellipse | `x`, `y`, `w`, `h`, and optionally `angle` | — |
+| Line | `x1`, `y1`, `x2`, `y2` | Length and bearing |
+| Polygon | Bounding `x`, `y`, `w`, `h` | Vertex count and area |
+| Pose | Bounding `x`, `y`, `w`, `h`, keypoint positions, and visibility | Confirmed-keypoint count |
 
-`x, y` is always the **top-left corner**, never the centre, so typing a width grows the shape
-rightwards rather than from the middle. A polygon has no size of its own, so editing its box
-translates or scales every vertex together — handy for nudging a traced outline into place.
+Inside the editor, `x` and `y` describe the top-left corner of a box. Changing its width
+therefore grows it towards the right rather than equally around its centre.
 
-## Export
+Exported rectangle, ellipse, and pose boxes use centre coordinates instead.
 
-Geometry follows the layouts **YOLO** uses for each task, so a row maps onto a label line
-without rearranging anything:
+# Export formats
 
-| Task | Line format |
+The export geometry follows the field ordering used by YOLO tasks:
+
+| Task | Geometry order |
 | --- | --- |
-| Detect | `cls xc yc w h` |
-| OBB | `cls x1 y1 x2 y2 x3 y3 x4 y4` |
-| Segment | `cls x1 y1 x2 y2 ... xn yn` |
-| Pose 2D | `cls xc yc w h px1 py1 px2 py2 ...` |
-| Pose 3D | `cls xc yc w h px1 py1 v1 px2 py2 v2 ...` |
+| Detection | `cls xc yc w h` |
+| Oriented bounding box | `cls x1 y1 x2 y2 x3 y3 x4 y4` |
+| Segmentation | `cls x1 y1 x2 y2 ... xn yn` |
+| 2D pose | `cls xc yc w h px1 py1 px2 py2 ...` |
+| Pose with visibility | `cls xc yc w h px1 py1 v1 px2 py2 v2 ...` |
 
-Every file starts with `image_name, image_width, image_height, class_name`, then:
+Every CSV begins with:
 
-| File | Written for | Geometry columns |
+```text
+image_name,image_width,image_height,class_name
+```
+
+The remaining geometry columns depend on the drawing mode:
+
+| Export file | Contents | Geometry columns |
 | --- | --- | --- |
 | `points.csv` | Point markers | `x, y` |
 | `lines.csv` | Line markers | `x1, y1, x2, y2` |
-| `rectangles.csv` | Rectangles without rotation | `xc, yc, w, h` |
-| `rectangles_obb.csv` | Rectangles **with** rotation | `x1 … y4`, four corners clockwise from top-left |
-| `ellipses.csv` | Ellipses without rotation | `xc, yc, w, h` |
-| `ellipses_obb.csv` | Ellipses **with** rotation | `x1 … y4` |
-| `polygons.csv` | Polygons | `n_vertices`, then `x1, y1 … xn, yn` |
-| `poses.csv` | Pose types without visibility | `xc, yc, w, h, n_keypoints`, then `px1, py1 …` |
-| `poses_3d.csv` | Pose types **with** visibility | `xc, yc, w, h, n_keypoints`, then `px1, py1, v1 …` |
-| `skeletons.json` | any pose type | blueprints, `kpt_shape` and `flip_idx` |
+| `rectangles.csv` | Non-rotated rectangles | `xc, yc, w, h` |
+| `rectangles_obb.csv` | Rotated rectangles | Four clockwise corners, starting at the top-left |
+| `ellipses.csv` | Non-rotated ellipses | `xc, yc, w, h` |
+| `ellipses_obb.csv` | Rotated ellipses | Four oriented-box corners |
+| `polygons.csv` | Polygons | `n_vertices`, followed by vertex coordinates |
+| `poses.csv` | Poses without visibility | `xc, yc, w, h, n_keypoints`, followed by keypoints |
+| `poses_3d.csv` | Poses with visibility | `xc, yc, w, h, n_keypoints`, followed by keypoints and visibility |
+| `skeletons.json` | Pose blueprints | Skeleton definitions, `kpt_shape`, and `flip_idx` |
 
-Turning rotation on for a rectangle or ellipse changes its encoding, so it changes its file:
-`xc, yc, w, h` cannot carry an angle, and an oriented box is what YOLO's OBB task expects.
-Ticking **Record visibility** on a pose type moves it from `poses.csv` to `poses_3d.csv` and
-sets its `kpt_shape` to `[n, 3]` instead of `[n, 2]`.
+Rotated rectangles and ellipses are exported using four oriented-box corners rather than
+an angle column.
 
-Polygons and poses vary in length, so rows are padded out to the widest one in that file;
-`n_vertices` and `n_keypoints` say where the real values stop.
+Enabling keypoint visibility changes the pose export from `poses.csv` to `poses_3d.csv`.
+Its `kpt_shape` changes from `[n, 2]` to `[n, 3]`.
 
-> **Coordinates are absolute image pixels, not normalised.** `image_width` and `image_height`
-> sit on every row, so dividing through to get YOLO's 0–1 range is one step — while recovering
-> pixels from normalised values without those columns is impossible.
+Polygon and pose rows may have different lengths. Shorter rows are padded to the maximum
+row length in that file. The `n_vertices` and `n_keypoints` fields identify where the real
+coordinates end.
 
-Several marker types sharing an encoding share the file, told apart by `class_name`.
+> Coordinates are stored as absolute image pixels, not normalised values.
+> `image_width` and `image_height` are included on every row so coordinates can be
+> converted to the 0–1 range when preparing YOLO labels.
 
-Hover the **Export** button for a menu listing each file with its marker count and which
-types are in it. Click one to download it on its own, or take everything at once: a single
-file downloads directly, several arrive as a ZIP.
+Several classes that share one encoding are written to the same file and distinguished by
+`class_name`.
 
-## Inspect: loading annotations back in
+Hover over **Export** to see the available files, annotation counts, and included marker
+types. Individual files can be downloaded separately. When multiple outputs are selected,
+the tool packages them into a ZIP archive.
 
-The third icon on the far left opens **Inspect**, where you load annotation CSVs and see them
-drawn on your images. Predictions from a model, a colleague's labels, or an export from an
-earlier session all read the same way.
+# Inspecting existing annotations
 
-- **load the images first**, then the CSVs - rows are matched to images by filename
-- drop CSVs onto the Inspect panel or anywhere on the main workspace; image + CSV drops are
-  routed automatically and report what was loaded
-- one file may cover any number of images, and any number of files may be loaded
-- each class becomes a marker type with a colour picked for it; click its chip to change the
-  colour, or anything else about it
-- a class that matches an existing type by **name and encoding** reuses that type rather than
-  making a duplicate - a `Seal` box and a `Seal` pose stay separate, because they are
-- removing a file removes exactly the annotations it brought, and any type it invented that
-  is now empty; nothing you drew yourself is touched
+The **Inspect** panel loads annotation CSV files and draws them on the corresponding
+images. It can be used for:
 
-Imported annotations behave like any other marker: editable, listed in the sidebar, and
-included when you export.
+- reopening an earlier export
+- inspecting model predictions
+- comparing annotation files
+- correcting annotations supplied by another person
 
-### What it reads
+## Loading CSV files
 
-The files this tool exports round-trip, and the geometry is worked out from whichever columns
-are present, so foreign files usually work too. The image column may be called `image_name`,
-`image`, `filename`, `file` or `path`; the class column `class_name`, `class`, `label`,
-`category` or `name`. Geometry is recognised as:
+Load the images before loading their annotations. CSV rows are matched to images by
+filename.
 
-| Columns present | Read as |
+CSV files can be dropped:
+
+- anywhere within the complete Inspect panel
+- onto the main workspace
+- together with their corresponding images
+
+The tool reports how many images and annotations were loaded.
+
+Additional behaviour:
+
+- one CSV may contain annotations for multiple images
+- any number of CSV files may be loaded
+- class chips are displayed alphabetically
+- new classes automatically receive marker types and colours
+- matching classes reuse an existing marker type when both name and encoding agree
+- the same class name can coexist across different encodings
+- imported annotations remain editable and are included in later exports
+
+Removing a CSV source removes only the annotations that it introduced. Automatically
+created marker types are removed when they are no longer used. Manually created work is
+not affected.
+
+Undo restores both the imported annotations and their source entry.
+
+## Supported CSV layouts
+
+The importer identifies columns by their names. The image column may be named:
+
+```text
+image_name, image, filename, file, path
+```
+
+The class column may be named:
+
+```text
+class_name, class, label, category, name
+```
+
+Geometry is recognised as follows:
+
+| Columns | Imported as |
 | --- | --- |
-| `n_keypoints`, `px1`, `py1` … (and `v1` …) | pose, 2D or 3D |
-| `n_vertices`, `x1`, `y1` … | polygon |
-| `x1` … `y4` | oriented box |
-| `xc`/`cx`, `yc`/`cy`, `w`, `h` | box |
-| `x1`, `y1`, `x2`, `y2` | line |
-| `x`, `y`, `w`, `h` | box, `x, y` being its top-left corner |
-| `x`, `y` | point |
+| `n_keypoints`, `px1`, `py1` … and optionally `v1` … | Pose |
+| `n_vertices`, `x1`, `y1` … | Polygon |
+| `x1` … `y4` | Oriented bounding box |
+| `xc` or `cx`, `yc` or `cy`, `w`, `h` | Centre-based box |
+| `x1`, `y1`, `x2`, `y2` | Line |
+| `x`, `y`, `w`, `h` | Top-left-based box |
+| `x`, `y` | Point |
 
-A box and an ellipse are the same four numbers, so the filename breaks the tie: a file with
-`ellipse` in its name is read as ellipses, anything else as rectangles.
+Boxes and ellipses use the same four unrotated geometry values. A filename containing
+`ellipse` is therefore interpreted as ellipse data; other matching files are interpreted
+as rectangles.
 
-If `image_width` and `image_height` are present and disagree with the loaded image, the
-coordinates are **rescaled onto it** - which is what you want when predictions came from a
-resized copy. The panel says when it has done that.
+When CSV image dimensions differ from the loaded image dimensions, coordinates are
+rescaled automatically. The Inspect panel reports when rescaling has occurred.
 
-## Notes
+# Privacy and persistence
 
-**Nothing is saved anywhere.** Marker types and annotations live only as long as the tab
-does — reloading or closing it throws them away, and the browser will ask you to confirm
-first. Export the CSV before you leave.
+Everything runs locally in the browser. Images, marker types, and annotations are not sent
+to a server.
+
+The current annotation session is temporary. Reloading or closing the page discards the
+loaded images and annotations, and the browser asks for confirmation before leaving.
+
+Always export your annotations before closing the tool.
