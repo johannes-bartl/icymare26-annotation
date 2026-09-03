@@ -165,77 +165,49 @@ translates or scales every vertex together — handy for nudging a traced outlin
 
 ## Export
 
-**Every drawing mode gets its own CSV**, carrying only the columns that mode needs:
+Geometry follows the layouts **YOLO** uses for each task, so a row maps onto a label line
+without rearranging anything:
 
-| File | Contains |
+| Task | Line format |
 | --- | --- |
-| `points.csv` | every Point marker |
-| `rectangles.csv` | every Rectangle marker |
-| `ellipses.csv` | every Ellipse marker |
-| `lines.csv` | every Line marker |
-| `polygons.csv` | every Polygon marker |
-| `poses.csv` | every Pose marker |
-| `skeletons.json` | the blueprints, so they travel with the data |
-
-Several marker types sharing a mode share the file — two rectangle types, `Seal` and `Bird`,
-both land in `rectangles.csv` and are told apart by the `class_name` column.
-
-Hover the **Export** button for a menu listing each file with its marker count and which
-types are in it. Click one to download it on its own, or take everything at once: a single
-file downloads directly, several arrive as a ZIP. Modes you never drew in are not offered.
-
-All coordinates are **absolute image pixels**, origin at the top-left corner.
-
-### `points.csv`, `rectangles.csv`, `ellipses.csv`, `lines.csv`
-
-One row per marker.
+| Detect | `cls xc yc w h` |
+| OBB | `cls x1 y1 x2 y2 x3 y3 x4 y4` |
+| Segment | `cls x1 y1 x2 y2 ... xn yn` |
+| Pose 2D | `cls xc yc w h px1 py1 px2 py2 ...` |
+| Pose 3D | `cls xc yc w h px1 py1 v1 px2 py2 v2 ...` |
 
 Every file starts with `image_name, image_width, image_height, class_name`, then:
 
-| Mode | Further columns |
-| --- | --- |
-| `point` | `x`, `y` — the point itself |
-| `rect` | `x`, `y` = top-left corner, `w`, `h`, `angle_deg` |
-| `ellipse` | `x`, `y` = top-left corner of its box, `w`, `h`, `angle_deg` |
-| `line` | `x`, `y` = start, `x2`, `y2` = end |
+| File | Written for | Geometry columns |
+| --- | --- | --- |
+| `points.csv` | Point markers | `x, y` |
+| `lines.csv` | Line markers | `x1, y1, x2, y2` |
+| `rectangles.csv` | Rectangles without rotation | `xc, yc, w, h` |
+| `rectangles_obb.csv` | Rectangles **with** rotation | `x1 … y4`, four corners clockwise from top-left |
+| `ellipses.csv` | Ellipses without rotation | `xc, yc, w, h` |
+| `ellipses_obb.csv` | Ellipses **with** rotation | `x1 … y4` |
+| `polygons.csv` | Polygons | `n_vertices`, then `x1, y1 … xn, yn` |
+| `poses.csv` | Pose types without visibility | `xc, yc, w, h, n_keypoints`, then `px1, py1 …` |
+| `poses_3d.csv` | Pose types **with** visibility | `xc, yc, w, h, n_keypoints`, then `px1, py1, v1 …` |
+| `skeletons.json` | any pose type | blueprints, `kpt_shape` and `flip_idx` |
 
-For a rotated box or ellipse, `x`, `y`, `w`, `h` describe it **before** rotation and
-`angle_deg` turns it about its centre — so the four numbers stay exact, and at
-`angle_deg = 0` they are simply the axis-aligned bounding box.
+Turning rotation on for a rectangle or ellipse changes its encoding, so it changes its file:
+`xc, yc, w, h` cannot carry an angle, and an oriented box is what YOLO's OBB task expects.
+Ticking **Record visibility** on a pose type moves it from `poses.csv` to `poses_3d.csv` and
+sets its `kpt_shape` to `[n, 3]` instead of `[n, 2]`.
 
-### `polygons.csv`
+Polygons and poses vary in length, so rows are padded out to the widest one in that file;
+`n_vertices` and `n_keypoints` say where the real values stop.
 
-**One row per vertex** — a variable number of vertices does not belong in a variable number
-of columns, and this shape pivots in one line of pandas.
+> **Coordinates are absolute image pixels, not normalised.** `image_width` and `image_height`
+> sit on every row, so dividing through to get YOLO's 0–1 range is one step — while recovering
+> pixels from normalised values without those columns is impossible.
 
-| Column | Meaning |
-| --- | --- |
-| `image_name`, `image_width`, `image_height` | the source image |
-| `class_name` | the marker type's name |
-| `instance_id` | 1-based, restarting on each image |
-| `n_vertices`, `area_px` | repeated on every row of the polygon, for convenience |
-| `vertex_index` | 0-based, in drawing order |
-| `x`, `y` | the vertex |
+Several marker types sharing an encoding share the file, told apart by `class_name`.
 
-### `poses.csv`
-
-**One row per keypoint**, with the instance's box repeated. Wide format would break the
-moment two skeletons have different keypoint counts.
-
-| Column | Meaning |
-| --- | --- |
-| `image_name`, `image_width`, `image_height` | the source image |
-| `class_name`, `instance_id` | which animal, 1-based per image |
-| `box_x`, `box_y`, `box_w`, `box_h` | its bounding box, repeated on every row |
-| `keypoint_index`, `keypoint_name` | position in the skeleton — the index is what YOLO uses |
-| `x`, `y` | the keypoint, empty when it is absent |
-| `visibility` | `2` visible · `1` labelled but occluded · `0` not present |
-
-### `skeletons.json`
-
-One entry per pose type, holding its blueprint plus `kpt_shape` and `flip_idx` ready for
-ultralytics. `flip_idx` is the permutation that maps each keypoint to its mirror — without it,
-horizontally-flipped training images teach the model that left flippers are right flippers.
+Hover the **Export** button for a menu listing each file with its marker count and which
+types are in it. Click one to download it on its own, or take everything at once: a single
+file downloads directly, several arrive as a ZIP.
 
 ## Notes
 

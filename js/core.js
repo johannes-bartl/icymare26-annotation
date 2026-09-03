@@ -506,30 +506,27 @@
 
   /* ----------------------------------------------------------- CSV export
 
-     One file per marker type, carrying only the columns that type's shape
-     actually needs. Coordinates are absolute image pixels, origin top-left.
+     Geometry follows the layouts YOLO uses for each task, so a row maps onto a
+     label line without rearranging anything:
 
-       point    x, y
-       rect     x, y = top-left of the unrotated box, w, h, angle_deg
-       ellipse  x, y = top-left of the unrotated bounding box, w, h, angle_deg
-       line     x, y = start, x2, y2 = end
-       polygon  one row per vertex
-       pose     one row per keypoint, with the instance's box repeated
+       Detect    cls  xc yc w h
+       OBB       cls  x1 y1 x2 y2 x3 y3 x4 y4
+       Segment   cls  x1 y1 x2 y2 ... xn yn
+       Pose 2D   cls  xc yc w h  px1 py1 px2 py2 ...
+       Pose 3D   cls  xc yc w h  px1 py1 v1 px2 py2 v2 ...
 
-     A rotated shape turns about its own centre, so (x, y, w, h, angle_deg)
-     stays lossless.                                                          */
+     Points and lines have no YOLO task of their own, so they keep the obvious
+     shape: x y, and x1 y1 x2 y2.
+
+     A rotatable rectangle or ellipse is written as an oriented box - its four
+     corners in order - because xc/yc/w/h cannot carry an angle. Everything
+     else stays axis-aligned.
+
+     Values are absolute image pixels, not normalised: image_width and
+     image_height sit on every row, so dividing through is one step, while
+     recovering pixels from normalised values without them is impossible.     */
 
   var HEAD = ['image_name', 'image_width', 'image_height', 'class_name'];
-
-  var COLUMNS = {
-    point:   HEAD.concat(['x', 'y']),
-    rect:    HEAD.concat(['x', 'y', 'w', 'h', 'angle_deg']),
-    ellipse: HEAD.concat(['x', 'y', 'w', 'h', 'angle_deg']),
-    line:    HEAD.concat(['x', 'y', 'x2', 'y2']),
-    polygon: HEAD.concat(['instance_id', 'n_vertices', 'area_px', 'vertex_index', 'x', 'y']),
-    pose:    HEAD.concat(['instance_id', 'box_x', 'box_y', 'box_w', 'box_h',
-                          'keypoint_index', 'keypoint_name', 'x', 'y', 'visibility'])
-  };
 
   function csvCell(v) {
     if (v === null || v === undefined) return '';
@@ -542,70 +539,142 @@
     return (Math.round(v * 100) / 100).toString();
   }
 
-  /** Push the row(s) one marker contributes onto `rows`. */
-  function appendRows(rows, head, m, t, inst) {
-    var k, kp, name, sk, area;
+  /** The four corners of a rotated box, clockwise from its top-left. */
+  App.cornersOf = function (m) {
+    var hw = m.w / 2, hh = m.h / 2, a = m.angle || 0, i, out = [],
+        local = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]], p;
+    for (i = 0; i < 4; i++) {
+      p = App.toWorld(local[i][0], local[i][1], m.cx, m.cy, a);
+      out.push(p.x, p.y);
+    }
+    return out;
+  };
 
-    if (m.shape === 'point') {
-      rows.push(head.concat([num(m.cx), num(m.cy)]).join(','));
-      return;
+  /* Which file a marker belongs in. Rotation changes the encoding, so it also
+     changes the file - one set of columns per file, always. */
+  var GROUPS = {
+    points:         { label: 'Points',             shape: 'point' },
+    lines:          { label: 'Lines',              shape: 'line' },
+    rectangles:     { label: 'Rectangles',         shape: 'rect' },
+    rectangles_obb: { label: 'Rectangles (OBB)',   shape: 'rect' },
+    ellipses:       { label: 'Ellipses',           shape: 'ellipse' },
+    ellipses_obb:   { label: 'Ellipses (OBB)',     shape: 'ellipse' },
+    polygons:       { label: 'Polygons',           shape: 'polygon' },
+    poses:          { label: 'Poses',              shape: 'pose' },
+    poses_3d:       { label: 'Poses (visibility)', shape: 'pose' }
+  };
+
+  var GROUP_ORDER = ['points', 'lines', 'rectangles', 'rectangles_obb',
+                     'ellipses', 'ellipses_obb', 'polygons', 'poses', 'poses_3d'];
+
+  App.GROUPS = GROUPS;
+
+  App.groupOf = function (m, t) {
+    switch (m.shape) {
+      case 'point':   return 'points';
+      case 'line':    return 'lines';
+      case 'rect':    return (t && t.rotatable) ? 'rectangles_obb' : 'rectangles';
+      case 'ellipse': return (t && t.rotatable) ? 'ellipses_obb' : 'ellipses';
+      case 'polygon': return 'polygons';
+      case 'pose':    return (t && t.pose3d) ? 'poses_3d' : 'poses';
+      default:        return null;
     }
-    if (m.shape === 'rect' || m.shape === 'ellipse') {
-      rows.push(head.concat([
-        num(m.cx - m.w / 2), num(m.cy - m.h / 2), num(m.w), num(m.h), num(m.angle || 0)
-      ]).join(','));
-      return;
+  };
+
+  /** The numbers one marker contributes, after the shared head columns. */
+  function geomOf(m, group) {
+    var out = [], i, kp;
+
+    if (group === 'points') return [m.cx, m.cy];
+    if (group === 'lines') return [m.x1, m.y1, m.x2, m.y2];
+    if (group === 'rectangles' || group === 'ellipses') return [m.cx, m.cy, m.w, m.h];
+    if (group === 'rectangles_obb' || group === 'ellipses_obb') return App.cornersOf(m);
+
+    if (group === 'polygons') {
+      out.push(m.pts.length);
+      for (i = 0; i < m.pts.length; i++) out.push(m.pts[i][0], m.pts[i][1]);
+      return out;
     }
-    if (m.shape === 'line') {
-      rows.push(head.concat([num(m.x1), num(m.y1), num(m.x2), num(m.y2)]).join(','));
-      return;
-    }
-    if (m.shape === 'polygon') {
-      area = App.polygonArea(m.pts);
-      for (k = 0; k < m.pts.length; k++) {
-        rows.push(head.concat([
-          inst, m.pts.length, num(area), k, num(m.pts[k][0]), num(m.pts[k][1])
-        ]).join(','));
+
+    /* poses: the box, then every keypoint in skeleton order */
+    out.push(m.cx, m.cy, m.w, m.h, m.kps.length);
+    for (i = 0; i < m.kps.length; i++) {
+      kp = m.kps[i];
+      if (group === 'poses_3d') {
+        out.push(kp[2] === App.VIS.ABSENT ? '' : kp[0],
+                 kp[2] === App.VIS.ABSENT ? '' : kp[1], kp[2]);
+      } else {
+        /* a 2D pose has nowhere to say "absent", so those sit at the origin,
+           which is what YOLO itself does with an unlabelled keypoint */
+        out.push(kp[2] === App.VIS.ABSENT ? 0 : kp[0],
+                 kp[2] === App.VIS.ABSENT ? 0 : kp[1]);
       }
-      return;
     }
-    if (m.shape === 'pose') {
-      sk = t.skeleton;
-      for (k = 0; k < m.kps.length; k++) {
-        kp = m.kps[k];
-        name = (sk && sk.keypoints[k]) ? sk.keypoints[k].name : 'point_' + (k + 1);
-        rows.push(head.concat([
-          inst,
-          num(m.cx - m.w / 2), num(m.cy - m.h / 2), num(m.w), num(m.h),
-          k, csvCell(name),
-          /* an absent keypoint has no meaningful position */
-          kp[2] === App.VIS.ABSENT ? '' : num(kp[0]),
-          kp[2] === App.VIS.ABSENT ? '' : num(kp[1]),
-          kp[2]
-        ]).join(','));
-      }
+    return out;
+  }
+
+  /** Column names sized to the widest row, so ragged rows still line up. */
+  function headerFor(group, widest) {
+    var cols = HEAD.slice(), i, n;
+
+    if (group === 'points') return cols.concat(['x', 'y']);
+    if (group === 'lines') return cols.concat(['x1', 'y1', 'x2', 'y2']);
+    if (group === 'rectangles' || group === 'ellipses') return cols.concat(['xc', 'yc', 'w', 'h']);
+    if (group === 'rectangles_obb' || group === 'ellipses_obb') {
+      return cols.concat(['x1', 'y1', 'x2', 'y2', 'x3', 'y3', 'x4', 'y4']);
     }
+
+    if (group === 'polygons') {
+      cols.push('n_vertices');
+      n = (widest - 1) / 2;
+      for (i = 1; i <= n; i++) cols.push('x' + i, 'y' + i);
+      return cols;
+    }
+
+    cols.push('xc', 'yc', 'w', 'h', 'n_keypoints');
+    n = group === 'poses_3d' ? (widest - 5) / 3 : (widest - 5) / 2;
+    for (i = 1; i <= n; i++) {
+      cols.push('px' + i, 'py' + i);
+      if (group === 'poses_3d') cols.push('v' + i);
+    }
+    return cols;
   }
 
   /**
-   * All markers drawn in one mode, whichever type they belong to — every row
-   * carries its `class_name`, so one file per mode stays sortable by class.
+   * Rows for one file. Polygons and poses vary in length, so every row is
+   * padded out to the widest one, and n_vertices / n_keypoints says where the
+   * real values stop.
    */
-  App.buildShapeCSV = function (shape) {
-    var rows = [COLUMNS[shape].join(',')], s = App.state, i, j, img, list, m, t, inst;
+  App.buildGroupCSV = function (group) {
+    var s = App.state, body = [], widest = 0, i, j, img, list, m, t, g, row, header, rows;
+
     for (i = 0; i < s.images.length; i++) {
       img = s.images[i];
       list = s.markers[img.id] || [];
-      inst = 0;
       for (j = 0; j < list.length; j++) {
         m = list[j];
-        if (m.shape !== shape) continue;
         t = App.getType(m.typeId);
-        inst += 1;                       // 1-based, restarting on each image
-        appendRows(rows,
-          [csvCell(img.name), num(img.w), num(img.h), csvCell(t ? t.name : '(deleted type)')],
-          m, t, inst);
+        if (App.groupOf(m, t) !== group) continue;
+        g = geomOf(m, group);
+        if (g.length > widest) widest = g.length;
+        body.push({
+          head: [csvCell(img.name), num(img.w), num(img.h), csvCell(t ? t.name : '(deleted type)')],
+          geom: g
+        });
       }
+    }
+    if (!body.length) return '';
+
+    header = headerFor(group, widest);
+    rows = [header.join(',')];
+    for (i = 0; i < body.length; i++) {
+      row = body[i].head.slice();
+      for (j = 0; j < widest; j++) {
+        row.push(j < body[i].geom.length
+          ? (typeof body[i].geom[j] === 'string' ? body[i].geom[j] : num(body[i].geom[j]))
+          : '');
+      }
+      rows.push(row.join(','));
     }
     return rows.join('\r\n') + '\r\n';
   };
@@ -620,7 +689,7 @@
         keypoints: t.skeleton.keypoints,
         edges: t.skeleton.edges,
         flip: t.skeleton.flip,
-        kpt_shape: [t.skeleton.keypoints.length, 3],
+        kpt_shape: [t.skeleton.keypoints.length, t.pose3d ? 3 : 2],
         flip_idx: window.Skeleton ? window.Skeleton.flipIdx(t.skeleton) : null
       };
     }
@@ -633,56 +702,49 @@
     return n;
   };
 
-  var SHAPE_ORDER = ['point', 'rect', 'ellipse', 'line', 'polygon', 'pose'];
-
-  var SHAPE_FILE = {
-    point: 'points.csv', rect: 'rectangles.csv', ellipse: 'ellipses.csv',
-    line: 'lines.csv', polygon: 'polygons.csv', pose: 'poses.csv'
-  };
-
-  var SHAPE_PLURAL = {
-    point: 'Points', rect: 'Rectangles', ellipse: 'Ellipses',
-    line: 'Lines', polygon: 'Polygons', pose: 'Poses'
-  };
-
-  /** Markers of one mode, and which types contributed them. */
-  function shapeTally(shape) {
+  /** Markers in one export group, and which types contributed them. */
+  function groupTally(group) {
     var s = App.state, k, list, i, m, t, n = 0, names = [], seen = {};
     for (k in s.markers) {
       list = s.markers[k];
       for (i = 0; i < list.length; i++) {
         m = list[i];
-        if (m.shape !== shape) continue;
-        n += 1;
         t = App.getType(m.typeId);
+        if (App.groupOf(m, t) !== group) continue;
+        n += 1;
         if (t && !seen[t.name]) { seen[t.name] = 1; names.push(t.name); }
       }
     }
     return { count: n, types: names };
   }
 
+  function poseTypeCount() {
+    var n = 0, i;
+    for (i = 0; i < App.state.types.length; i++) {
+      if (App.state.types[i].shape === 'pose' && App.state.types[i].skeleton) n += 1;
+    }
+    return n;
+  }
+
   /**
-   * The files an export would produce right now: one per drawing mode that has
-   * anything in it, plus the blueprints when poses are involved. Drives both
-   * the export menu and the download itself, so the menu can never offer a
-   * file that would come out empty.
+   * The files an export would produce right now. Drives both the export menu
+   * and the download, so the menu can never offer a file that comes out empty.
    */
   App.exportFiles = function () {
-    var out = [], i, shape, tally, poses = 0;
+    var out = [], i, g, tally, poses = 0;
 
-    for (i = 0; i < SHAPE_ORDER.length; i++) {
-      shape = SHAPE_ORDER[i];
-      tally = shapeTally(shape);
+    for (i = 0; i < GROUP_ORDER.length; i++) {
+      g = GROUP_ORDER[i];
+      tally = groupTally(g);
       if (!tally.count) continue;
-      if (shape === 'pose') poses = tally.count;
-
+      if (g === 'poses' || g === 'poses_3d') poses += tally.count;
       out.push({
-        name: SHAPE_FILE[shape],
-        label: SHAPE_PLURAL[shape],
-        shape: shape,
+        name: g + '.csv',
+        label: GROUPS[g].label,
+        shape: GROUPS[g].shape,
         types: tally.types,
         count: tally.count,
-        text: App.buildShapeCSV(shape)
+        text: App.buildGroupCSV(g)
       });
     }
 
@@ -700,13 +762,6 @@
     return out;
   };
 
-  function poseTypeCount() {
-    var n = 0, i;
-    for (i = 0; i < App.state.types.length; i++) {
-      if (App.state.types[i].shape === 'pose' && App.state.types[i].skeleton) n += 1;
-    }
-    return n;
-  }
 
   App.stamp = function () {
     var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };

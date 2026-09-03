@@ -208,6 +208,16 @@
         </div>
       </div>
 
+      <label class="check" id="f-pose3d-wrap">
+        <input type="checkbox" id="f-pose3d">
+        <span class="check-box"><span data-icon="check"></span></span>
+        <span class="check-text">
+          Record visibility (3D pose)
+          <small>Writes v after every keypoint, as YOLO's 3D pose format does:
+          2 visible, 1 occluded, 0 absent. Without it the export carries positions only.</small>
+        </span>
+      </label>
+
       <div class="field" id="f-skel-wrap">
         <span class="field-label">Skeleton</span>
         <div class="skelrow">
@@ -420,9 +430,10 @@
       <section>
         <h4>Exporting</h4>
         <p class="note" style="margin-top:0">
-          Every marker type gets its own CSV, with only the columns its shape needs.
-          Hover <b>Export</b> to pick a single file, or take everything at once —
-          several files arrive as a ZIP. Types you never drew with are not offered.
+          Rows follow the layout YOLO uses for each task, in absolute image pixels:
+          <b>xc yc w h</b> for boxes, four corners for a rotated box, a flat vertex list for
+          polygons, and the box followed by every keypoint for poses. One file per encoding.
+          Hover <b>Export</b> to take a single file or all of them.
         </p>
       </section>
 

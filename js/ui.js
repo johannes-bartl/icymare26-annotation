@@ -466,8 +466,11 @@
                   (t.rotatable ? ' (rotatable)' : '') + '">' + window.svgIcon(t.shape, 16) + '</span>' +
                 '<span class="type-name" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
                 (t.shape === 'pose' && t.skeleton
-                  ? '<span class="type-kind" title="' + t.skeleton.keypoints.length + ' keypoints">' +
-                    t.skeleton.keypoints.length + 'kp</span>' : '') +
+                  ? '<span class="type-kind" title="' + t.skeleton.keypoints.length + ' keypoints' +
+                    (t.pose3d ? ', with visibility' : '') + '">' +
+                    t.skeleton.keypoints.length + 'kp' + (t.pose3d ? '+v' : '') + '</span>' : '') +
+                (t.rotatable && (t.shape === 'rect' || t.shape === 'ellipse')
+                  ? '<span class="type-kind" title="Exported as an oriented box">OBB</span>' : '') +
                 (t.rotatable ? '<span class="type-rot" title="Rotatable">' + window.svgIcon('rotate', 13) + '</span>' : '') +
                 '<span class="pill count" title="markers placed">' + n + '</span>' +
                 (t.hotkey ? '<span class="key">' + t.hotkey + '</span>' : '') +
@@ -713,12 +716,12 @@
     draft = t
       ? {
           name: t.name, shape: t.shape, rotatable: !!t.rotatable, color: t.color,
-          hotkey: t.hotkey,
+          hotkey: t.hotkey, pose3d: !!t.pose3d,
           skeleton: t.skeleton ? window.Skeleton.clone(t.skeleton) : null
         }
       : {
           name: '', shape: 'rect', rotatable: false, color: nextColor(),
-          hotkey: nextHotkey(), skeleton: null
+          hotkey: nextHotkey(), pose3d: true, skeleton: null
         };
 
     $('modal-type-title').textContent = t ? 'Edit marker type' : 'New marker type';
@@ -766,6 +769,8 @@
     if (!canRotate) draft.rotatable = false;
     $('f-rotatable').checked = draft.rotatable;
 
+    $('f-pose3d-wrap').hidden = !isPose;
+    $('f-pose3d').checked = !!draft.pose3d;
     $('f-skel-wrap').hidden = !isPose;
     if (isPose && !draft.skeleton) draft.skeleton = window.Skeleton.clone(window.Skeleton.PRESETS.quadruped);
     $('f-skel-summary').textContent = draft.skeleton ? window.Skeleton.summary(draft.skeleton) : 'no keypoints yet';
@@ -832,6 +837,7 @@
     });
 
     $('f-rotatable').addEventListener('change', function () { draft.rotatable = this.checked; });
+    $('f-pose3d').addEventListener('change', function () { draft.pose3d = this.checked; });
 
     $('f-skel-edit').addEventListener('click', function () {
       var used = editingTypeId ? App.countOfType(editingTypeId) : 0;
@@ -907,6 +913,7 @@
       t.rotatable = !!draft.rotatable;
       t.color = draft.color;
       t.hotkey = draft.hotkey;
+      t.pose3d = !!draft.pose3d;
       t.skeleton = draft.skeleton;
       if (t.shape !== draft.shape && App.countOfType(t.id) === 0) t.shape = draft.shape;
       else if (t.shape !== draft.shape) UI.toast('Mode kept — markers of this type already exist');
@@ -915,7 +922,7 @@
       var nt = {
         id: App.uid('t'), name: name, shape: draft.shape,
         rotatable: !!draft.rotatable, color: draft.color, hotkey: draft.hotkey,
-        skeleton: draft.skeleton
+        pose3d: !!draft.pose3d, skeleton: draft.skeleton
       };
       App.state.types.push(nt);
       App.state.activeTypeId = nt.id;
