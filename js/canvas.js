@@ -48,6 +48,7 @@
   var hoverHandle = null;
   var hoverInsert = null;      // {marker, index, x, y} — where a new vertex would go
   var hoverKill = null;        // {marker, index, x, y} — vertex Alt+click would remove
+  var collapsedHoverIds = [];  // collapsed rectangles containing the cursor
   var lastImage = null;        // image coords of the last pointer position
   var lastClient = { x: 0, y: 0 };   // viewport coords, for the floating bin
   var spaceDown = false;
@@ -365,6 +366,17 @@
     ctx.lineWidth = (selected || active) ? 2.5 : 2;
     ctx.strokeStyle = stroke;
     if (ghost) ctx.setLineDash([5, 4]);
+
+    /* Display-only marker mode. Geometry and hit-testing still use the full
+       rectangle; entering it reveals the real outline and all edit handles. */
+    if (boxIsCollapsed(m, selected, ghost)) {
+      c = App.boxCollapseAnchor(m);
+      c = toScreen(c.x, c.y);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(c.x - 3.5, c.y - 3.5, 7, 7);
+      ctx.setLineDash([]);
+      return;
+    }
 
     if (m.shape === 'point') {
       c = toScreen(m.cx, m.cy);
@@ -715,6 +727,24 @@
     return null;
   }
 
+  /** True while this rectangle should be represented by its small marker. */
+  function boxIsCollapsed(m, selected, ghost) {
+    return !!(App.state.boxCollapse.enabled && m.shape === 'rect' && !selected && !ghost &&
+              hoverEdgeId !== m.id && hoverBodyId !== m.id &&
+              collapsedHoverIds.indexOf(m.id) === -1);
+  }
+
+  /** Every collapsed rectangle that contains the cursor, in draw order. */
+  function collapsedBoxesAt(ip) {
+    if (!App.state.boxCollapse.enabled) return [];
+    var list = App.activeMarkers(), out = [], i, m;
+    for (i = 0; i < list.length; i++) {
+      m = list[i];
+      if (m.shape === 'rect' && insideMarker(m, ip.x, ip.y, 0)) out.push(m.id);
+    }
+    return out;
+  }
+
   /* ---------------------------------------------------------- hit-testing */
 
   /** Cursor within `tol` image px of the marker's outline. */
@@ -778,8 +808,14 @@
    */
   function armCandidate(p, ip) {
     var list = App.activeMarkers(), tol = EDGE_TOL / view.scale, i;
-    for (i = list.length - 1; i >= 0; i--) if (handleAt(list[i], p.x, p.y)) return list[i];
-    for (i = list.length - 1; i >= 0; i--) if (nearOutline(list[i], ip.x, ip.y, tol)) return list[i];
+    for (i = list.length - 1; i >= 0; i--) {
+      if (!boxIsCollapsed(list[i], App.state.selection.indexOf(list[i].id) !== -1, false) &&
+          handleAt(list[i], p.x, p.y)) return list[i];
+    }
+    for (i = list.length - 1; i >= 0; i--) {
+      if (!boxIsCollapsed(list[i], App.state.selection.indexOf(list[i].id) !== -1, false) &&
+          nearOutline(list[i], ip.x, ip.y, tol)) return list[i];
+    }
     return null;
   }
 
@@ -1066,7 +1102,10 @@
 
   function updateHover(p, ip) {
     var prevEdge = hoverEdgeId, prevBody = hoverBodyId,
-        prevHandle = hoverHandle && hoverHandle.id, m;
+        prevHandle = hoverHandle && hoverHandle.id,
+        prevCollapsed = collapsedHoverIds.join('|'), m;
+
+    collapsedHoverIds = collapsedBoxesAt(ip);
 
     if (isDeleteMode()) {
       m = topmost(ip.x, ip.y, insideMarker, HIT_TOL / view.scale);
@@ -1090,6 +1129,7 @@
          armed it stays armed until the cursor leaves its bounding box by a
          margin wide enough to contain every one of its handles. */
       if (prev && handleAt(prev, p.x, p.y)) m = prev;
+      if (!m && collapsedHoverIds.length) m = App.getMarker(collapsedHoverIds[collapsedHoverIds.length - 1]);
       if (!m) m = armCandidate(p, ip);
       if (!m && prev && withinReach(prev, ip)) m = prev;
 
@@ -1110,6 +1150,7 @@
     updateCursor();
     if (prevEdge !== hoverEdgeId || prevBody !== hoverBodyId ||
         prevHandle !== (hoverHandle && hoverHandle.id) ||
+        prevCollapsed !== collapsedHoverIds.join('|') ||
         prevKill !== (hoverKill && (hoverKill.marker.id + ':' + hoverKill.index)) ||
         prevInsert !== (hoverInsert && (hoverInsert.marker.id + ':' + hoverInsert.index)) ||
         hoverInsert) Canvas.render();
@@ -1208,6 +1249,7 @@
     hoverHandle = null;
     hoverInsert = null;
     hoverKill = null;
+    collapsedHoverIds = [];
     lastPointer = null;
     lastImage = null;
     if (window.UI) { window.UI.moveBinCursor(0, 0, false); window.UI.setCursorReadout(null); }

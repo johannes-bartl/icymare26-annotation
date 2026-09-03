@@ -25,7 +25,14 @@
     sidebarCollapsed: false,
     onboarded: false,    // the first-run prompt has been answered, one way or another
     expanded: {},        // typeId -> its instance list is open in the sidebar
-    sources: []          // loaded annotation files: {id, name, added, classes, ...}
+    sources: [],         // loaded annotation files: {id, name, added, classes, ...}
+    boxCollapse: {       // display-only preference; annotations remain full boxes
+      enabled: false,
+      split: false,
+      all:  { ax: 0.5, ay: 0.5 },
+      tall: { ax: 0.5, ay: 1.0 },
+      wide: { ax: 0.5, ay: 0.5 }
+    }
   };
 
   App.SHAPES = ['point', 'rect', 'line', 'ellipse', 'polygon', 'pose'];
@@ -162,6 +169,19 @@
       return { x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2 };
     }
     return { x: m.cx, y: m.cy };
+  };
+
+  /**
+   * Configured marker position for a rectangle collapsed on screen.
+   * ax runs left -> right; ay runs bottom -> top. The point follows rotated
+   * boxes as well, although collapsing never changes the stored geometry.
+   */
+  App.boxCollapseAnchor = function (m) {
+    var cfg = App.state.boxCollapse,
+        pos = cfg.split ? (m.h >= m.w ? cfg.tall : cfg.wide) : cfg.all,
+        lx = (pos.ax - 0.5) * m.w,
+        ly = (0.5 - pos.ay) * m.h;
+    return App.toWorld(lx, ly, m.cx, m.cy, m.angle || 0);
   };
 
   /** Shoelace area of a polygon, in square image pixels. */

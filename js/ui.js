@@ -27,6 +27,7 @@
     els.fileList = $('file-list');
     els.fileFoot = $('file-foot');
     els.typeList = $('type-list');
+    els.inspectPanel = $('inspect-panel');
     els.sourceList = $('source-list');
     els.bin = $('bincursor');
     els.modalRoot = $('modal-root');
@@ -124,11 +125,128 @@
     $('onboard-new').addEventListener('click', function () { openTypeEditor(null); });
     $('onboard-help').addEventListener('click', function () { openModal('modal-help'); });
     $('onboard-skip').addEventListener('click', function () { App.state.onboarded = true; refresh(); });
+    wireBoxCollapse();
     wireExport();
     wireInspect();
 
     $('btn-new-type').addEventListener('click', function () { openTypeEditor(null); });
     $('btn-new-type-2').addEventListener('click', function () { openTypeEditor(null); });
+  }
+
+  /* ------------------------------------------- collapsed bounding boxes */
+
+  var BOX_COLLAPSE_KEY = 'icymare-box-collapse-v1';
+
+  function clampAnchor(v, fallback) {
+    v = parseFloat(v);
+    return isFinite(v) ? App.clamp(v, 0, 1) : fallback;
+  }
+
+  function loadBoxCollapse() {
+    var cfg = App.state.boxCollapse, saved = null;
+    try { saved = JSON.parse(localStorage.getItem(BOX_COLLAPSE_KEY) || 'null'); } catch (e) {}
+    if (!saved) return;
+    cfg.enabled = !!saved.enabled;
+    cfg.split = !!saved.split;
+    ['all', 'tall', 'wide'].forEach(function (name) {
+      if (!saved[name]) return;
+      cfg[name].ax = clampAnchor(saved[name].ax, cfg[name].ax);
+      cfg[name].ay = clampAnchor(saved[name].ay, cfg[name].ay);
+    });
+  }
+
+  function saveBoxCollapse() {
+    try { localStorage.setItem(BOX_COLLAPSE_KEY, JSON.stringify(App.state.boxCollapse)); } catch (e) {}
+  }
+
+  function setBoxCollapse(enabled, announce) {
+    App.state.boxCollapse.enabled = !!enabled;
+    var btn = $('btn-box-collapse'), check = $('box-collapse-enabled');
+    if (btn) btn.classList.toggle('active', App.state.boxCollapse.enabled);
+    if (check) check.checked = App.state.boxCollapse.enabled;
+    saveBoxCollapse();
+    Canvas.refreshHover();
+    Canvas.render();
+    if (announce) UI.toast('Collapsed boxes ' + (App.state.boxCollapse.enabled ? 'on' : 'off'));
+  }
+
+  function collapseGroupHTML(name, label) {
+    var p = App.state.boxCollapse[name];
+    return '<div class="box-collapse-group" data-collapse-group="' + name + '">' +
+             '<div class="box-collapse-group-title">' + label + '</div>' +
+             '<div class="box-collapse-slider">' +
+               '<label>X · left → right</label>' +
+               '<input type="range" min="0" max="1" step="0.05" data-anchor="ax" value="' + p.ax + '">' +
+               '<output>' + p.ax.toFixed(2) + '</output>' +
+             '</div>' +
+             '<div class="box-collapse-slider">' +
+               '<label>Y · bottom → top</label>' +
+               '<input type="range" min="0" max="1" step="0.05" data-anchor="ay" value="' + p.ay + '">' +
+               '<output>' + p.ay.toFixed(2) + '</output>' +
+             '</div>' +
+           '</div>';
+  }
+
+  function drawBoxCollapsePreview() {
+    var cfg = App.state.boxCollapse, host = $('box-collapse-preview');
+    if (!host) return;
+    function box(w, h, pos, label) {
+      return '<div class="box-collapse-preview-item">' +
+               '<div class="box-collapse-preview-box" style="width:' + w + 'px;height:' + h + 'px">' +
+                 '<span class="box-collapse-preview-dot" style="left:' + (pos.ax * 100) +
+                   '%;top:' + ((1 - pos.ay) * 100) + '%"></span>' +
+               '</div><span class="box-collapse-preview-label">' + label + '</span></div>';
+    }
+    host.innerHTML = box(42, 68, cfg.split ? cfg.tall : cfg.all, 'standing') +
+                     box(78, 38, cfg.split ? cfg.wide : cfg.all, 'lying');
+  }
+
+  function renderBoxCollapseGroups() {
+    var cfg = App.state.boxCollapse, host = $('box-collapse-groups');
+    if (!host) return;
+    host.innerHTML = cfg.split
+      ? collapseGroupHTML('tall', 'Standing · height ≥ width') + collapseGroupHTML('wide', 'Lying · width > height')
+      : collapseGroupHTML('all', 'All bounding boxes');
+    var inputs = host.querySelectorAll('input[data-anchor]');
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].addEventListener('input', function () {
+        var group = this.closest('[data-collapse-group]').dataset.collapseGroup;
+        App.state.boxCollapse[group][this.dataset.anchor] = parseFloat(this.value);
+        this.nextElementSibling.textContent = parseFloat(this.value).toFixed(2);
+        saveBoxCollapse();
+        drawBoxCollapsePreview();
+        Canvas.render();
+      });
+    }
+    drawBoxCollapsePreview();
+  }
+
+  function wireBoxCollapse() {
+    loadBoxCollapse();
+    var wrap = $('box-collapse-wrap'), btn = $('btn-box-collapse'), pop = $('box-collapse-popover'),
+        enabled = $('box-collapse-enabled'), split = $('box-collapse-split');
+    if (!wrap || !btn || !pop || !enabled || !split) return;
+
+    enabled.checked = App.state.boxCollapse.enabled;
+    split.checked = App.state.boxCollapse.split;
+    btn.classList.toggle('active', App.state.boxCollapse.enabled);
+    renderBoxCollapseGroups();
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      pop.hidden = !pop.hidden;
+    });
+    pop.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    document.addEventListener('pointerdown', function (e) {
+      if (!pop.hidden && !wrap.contains(e.target)) pop.hidden = true;
+    });
+    enabled.addEventListener('change', function () { setBoxCollapse(this.checked, true); });
+    split.addEventListener('change', function () {
+      App.state.boxCollapse.split = this.checked;
+      saveBoxCollapse();
+      renderBoxCollapseGroups();
+      Canvas.render();
+    });
   }
 
   /**
@@ -279,7 +397,7 @@
     if (!files.length) { UI.toast('No CSV files in that selection'); return; }
     if (!App.state.images.length) { UI.toast('Load the images first, so annotations have something to land on'); return; }
 
-    var done = 0, totals = { added: 0, skipped: 0, failed: 0 };
+    var done = 0, totals = { added: 0, skipped: 0, failed: 0, files: files.length };
 
     /* an image that has never been opened does not know its own size yet, and
        a row cannot be placed on an image of unknown size */
@@ -330,6 +448,7 @@
     Canvas.render();
     if (totals.added) {
       UI.toast('Loaded ' + totals.added + ' annotation' + (totals.added === 1 ? '' : 's') +
+               ' from ' + totals.files + ' CSV' + (totals.files === 1 ? '' : 's') +
                (totals.skipped ? ' · ' + totals.skipped + ' skipped' : ''));
     } else if (!totals.failed) {
       UI.toast('Nothing matched the loaded images');
@@ -413,18 +532,49 @@
     inFiles.addEventListener('change', function () { addFiles(this.files); this.value = ''; });
     inFolder.addEventListener('change', function () { addFiles(this.files); this.value = ''; });
 
-    var depth = 0;
-    window.addEventListener('dragenter', function (e) {
-      e.preventDefault(); depth += 1; els.dropzone.classList.add('on');
-    });
-    window.addEventListener('dragover', function (e) { e.preventDefault(); });
-    window.addEventListener('dragleave', function (e) {
-      e.preventDefault(); depth -= 1; if (depth <= 0) { depth = 0; els.dropzone.classList.remove('on'); }
-    });
-    window.addEventListener('drop', function (e) {
-      e.preventDefault(); depth = 0; els.dropzone.classList.remove('on');
-      collectDropped(e.dataTransfer, addFiles);
-    });
+    /* Accept file drops at document capture level. A single handler avoids the
+       nested drop targets swallowing one another, and also prevents the browser
+       from navigating to a dropped image before the stage sees it. */
+    function isFileDrag(e) {
+      var dt = e.dataTransfer, i;
+      if (!dt) return false;
+      if (dt.files && dt.files.length) return true;
+      if (dt.items && dt.items.length) {
+        for (i = 0; i < dt.items.length; i++) if (dt.items[i].kind === 'file') return true;
+      }
+      if (dt.types) {
+        for (i = 0; i < dt.types.length; i++) if (dt.types[i] === 'Files') return true;
+      }
+      return false;
+    }
+
+    function clearDropState() {
+      els.inspectPanel.classList.remove('drop-on');
+      els.dropzone.classList.remove('on');
+    }
+
+    function showDropTarget(e) {
+      var overInspect;
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (ignore) {}
+      overInspect = els.inspectPanel.classList.contains('active') && els.inspectPanel.contains(e.target);
+      els.inspectPanel.classList.toggle('drop-on', overInspect);
+      els.dropzone.classList.toggle('on', !overInspect);
+    }
+
+    document.addEventListener('dragenter', showDropTarget, true);
+    document.addEventListener('dragover', showDropTarget, true);
+    document.addEventListener('dragleave', function (e) {
+      if (e.clientX <= 0 || e.clientY <= 0 ||
+          e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) clearDropState();
+    }, true);
+    document.addEventListener('drop', function (e) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      clearDropState();
+      collectDropped(e.dataTransfer, handleDroppedFiles);
+    }, true);
 
     els.fileList.addEventListener('click', function (e) {
       var row = e.target.closest('.file-row');
@@ -432,6 +582,23 @@
       if (e.target.closest('[data-act="del-image"]')) { askRemoveImage(row.dataset.id); return; }
       selectImage(row.dataset.id);
     });
+  }
+
+  /** Route a drop by file type. Mixed image + CSV drops load the images first,
+      then wait for their dimensions before importing the annotations. */
+  function handleDroppedFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []), images = [], csvs = [], i, f;
+    for (i = 0; i < files.length; i++) {
+      f = files[i];
+      if (/^image\//.test(f.type) || /\.(jpe?g|png|bmp|webp|gif|tiff?)$/i.test(f.name)) images.push(f);
+      else if (/\.csv$/i.test(f.name) || /csv/.test(f.type)) csvs.push(f);
+    }
+    if (!images.length && !csvs.length) { UI.toast('No images or CSV files found in that drop'); return; }
+    if (images.length) {
+      addFiles(images, function () { if (csvs.length) loadCSVs(csvs); });
+    } else {
+      loadCSVs(csvs);
+    }
   }
 
   /** Walk a DataTransfer, descending into dropped folders. */
@@ -467,11 +634,11 @@
     finish();
   }
 
-  function addFiles(fileList) {
+  function addFiles(fileList, done) {
     var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
       return /^image\//.test(f.type) || /\.(jpe?g|png|bmp|webp|gif|tiff?)$/i.test(f.name);
     });
-    if (!files.length) { UI.toast('No images found in that drop'); return; }
+    if (!files.length) { UI.toast('No images found in that drop'); if (done) done(); return; }
 
     files.sort(function (a, b) { return App.naturalCompare(a.name, b.name); });
 
@@ -498,7 +665,7 @@
     }
     if (added) UI.toast('Added ' + added + ' image' + (added === 1 ? '' : 's'));
     /* sizes are needed by the export and the importer, not just by the canvas */
-    Canvas.measureAll(function (n) { if (n) refresh(); });
+    Canvas.measureAll(function (n) { if (n) refresh(); if (done) done(); });
     App.save();
   }
 
@@ -1156,6 +1323,12 @@
         App.state.shiftDown = true; Canvas.refreshHover(); Canvas.render();
       }
 
+      if (e.key === 'Escape' && $('box-collapse-popover') && !$('box-collapse-popover').hidden) {
+        e.preventDefault();
+        $('box-collapse-popover').hidden = true;
+        return;
+      }
+
       if (modalOpen()) {
         /* the skeleton editor owns Delete while a keypoint is selected */
         if ((e.key === 'Delete' || e.key === 'Backspace') &&
@@ -1225,6 +1398,7 @@
         case 'x': case 'X': setTool(App.state.tool === 'delete' ? 'annotate' : 'delete'); break;
         case 'r': case 'R': Canvas.rotateView(); break;
         case 'l': case 'L': setLocked(!App.state.locked); break;
+        case 'b': case 'B': setBoxCollapse(!App.state.boxCollapse.enabled, true); break;
         case 'o': case 'O': cycleKeypointVisibility(); break;
         case 'f': case 'F': Canvas.fit(); updateStatus(); break;
         case '?': openModal('modal-help'); break;

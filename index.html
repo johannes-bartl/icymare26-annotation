@@ -35,6 +35,33 @@
       <button class="tool" id="btn-lock" data-tip="lock"><span data-icon="unlock"></span></button>
     </div>
 
+    <div class="box-collapse-wrap" id="box-collapse-wrap">
+      <button class="tool" id="btn-box-collapse" title="Collapsed bounding boxes (B) — configure and activate">
+        <span data-icon="boxmarker"></span>
+      </button>
+      <div class="box-collapse-popover" id="box-collapse-popover" hidden>
+        <div class="box-collapse-head">
+          <div>
+            <strong>Collapsed bounding boxes</strong>
+            <small>Hotkey <kbd>B</kbd></small>
+          </div>
+          <label class="box-collapse-enable">
+            <input type="checkbox" id="box-collapse-enabled">
+            <span>Active</span>
+          </label>
+        </div>
+        <p class="box-collapse-help">
+          Rectangles become small square markers. Move over a box to reveal and edit its full outline.
+        </p>
+        <label class="box-collapse-split">
+          <input type="checkbox" id="box-collapse-split">
+          <span>Separate positions for standing and lying boxes</span>
+        </label>
+        <div id="box-collapse-groups"></div>
+        <div class="box-collapse-preview" id="box-collapse-preview"></div>
+      </div>
+    </div>
+
     <div class="sep"></div>
 
     <div class="toolgroup">
@@ -106,14 +133,14 @@
       </section>
 
       <!-- Inspect panel -->
-      <section class="panel" data-panel="inspect">
+      <section class="panel csv-drop-panel" data-panel="inspect" id="inspect-panel">
         <div class="panel-head">
           <h2>Inspect</h2>
           <div class="panel-actions">
             <button class="iconbtn" id="btn-add-csv" title="Load annotation CSVs"><span data-icon="plus"></span></button>
           </div>
         </div>
-        <div class="panel-body" id="source-list"></div>
+        <div class="panel-body csv-drop-target" id="source-list"></div>
         <div class="panel-foot">
           <button class="btn block" id="btn-add-csv-2"><span data-icon="upload"></span> Load annotations</button>
         </div>
@@ -155,7 +182,7 @@
         </div>
       </div>
 
-      <div class="dropzone" id="dropzone"><div class="dropzone-inner">Drop to add images</div></div>
+      <div class="dropzone" id="dropzone"><div class="dropzone-inner">Drop to add images or annotation CSVs</div></div>
 
       <div class="hint" id="active-type-chip" hidden></div>
 
@@ -247,7 +274,7 @@
         <span class="check-box"><span data-icon="check"></span></span>
         <span class="check-text">
           Allow rotation
-          <small>Adds a rotation handle; the angle is written to the CSV.</small>
+          <small>Adds a rotation handle; rotated shapes export as four OBB corners.</small>
         </span>
       </label>
 
@@ -414,6 +441,7 @@
           <dt><kbd>V</kbd></dt><dd>Select tool — drag a box round several markers</dd>
           <dt><kbd>X</kbd></dt><dd>Delete tool (a latched <kbd>Ctrl</kbd>)</dd>
           <dt><kbd>L</kbd></dt><dd>Lock existing markers — you then only place new ones, and must hold <kbd>Shift</kbd> to reshape one</dd>
+          <dt><kbd>B</kbd></dt><dd>Toggle collapsed bounding boxes; configure their marker position from the top bar</dd>
           <dt><kbd>Delete</kbd></dt><dd>Delete everything selected</dd>
           <dt><kbd>Esc</kbd></dt><dd>Clear the selection</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>A</kbd></dt><dd>Select every marker on this image</dd>

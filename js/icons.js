@@ -29,6 +29,7 @@ window.ICONS = {
   ellipse:   '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
   inspect:   '<path d="M4 4h7v7H4z"/><circle cx="16.5" cy="16.5" r="4"/><line x1="19.5" y1="19.5" x2="22" y2="22"/><line x1="4" y1="15" x2="11" y2="15"/><line x1="4" y1="19" x2="9" y2="19"/>',
   mirror:    '<line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="3 2.5"/><path d="M9 7 4 12l5 5z"/><path d="m15 7 5 5-5 5z"/>',
+  boxmarker: '<rect x="3.5" y="5" width="17" height="14" rx="1" stroke-dasharray="3 2.4"/><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor" stroke="none"/>',
   lock:      '<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
   unlock:    '<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 7.4-2"/>',
   polygon:   '<path d="M12 3.2 20.4 9.3 17.2 19.2H6.8L3.6 9.3z"/>',

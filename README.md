@@ -34,6 +34,7 @@ The **Get help** button in the top bar lists all of this in the app itself.
 | Previous / next image | `,` and `.` or the arrow keys |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Lock existing markers | `L`, or the padlock in the top bar |
+| Collapse bounding boxes | `B`; configure the marker position from the box button in the top bar |
 | Remove an image | The bin on its row in the Images panel, or `Del` once the row is focused |
 
 Markers are drawn as **outlines with no fill**, and their handles appear on their own as
@@ -52,6 +53,14 @@ The padlock in the top bar protects what you have already drawn. With it on, the
 tool only ever places **new** markers — handles do not appear and a stray drag across an
 existing marker cannot reshape it. Hold `Shift` to edit one anyway, for as long as you hold
 it. Useful once an image is mostly done and you are filling in the last few animals.
+
+### Collapsed bounding boxes
+
+The dashed-box button in the top bar opens a display-only configuration panel. Activate it
+there (or press `B`) to replace rectangles with small square markers; moving the cursor into
+a rectangle reveals its full outline and normal edit handles. The marker can sit anywhere
+inside the box, and standing and lying boxes can use separate positions. This never changes
+the stored or exported geometry.
 
 ## Marker types
 
@@ -216,6 +225,8 @@ drawn on your images. Predictions from a model, a colleague's labels, or an expo
 earlier session all read the same way.
 
 - **load the images first**, then the CSVs - rows are matched to images by filename
+- drop CSVs onto the Inspect panel or anywhere on the main workspace; image + CSV drops are
+  routed automatically and report what was loaded
 - one file may cover any number of images, and any number of files may be loaded
 - each class becomes a marker type with a colour picked for it; click its chip to change the
   colour, or anything else about it
